@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import { supabase } from "../../lib/supabase";
-import { changeDemoPassword, isDemoMode } from "../../lib/mockData";
+import { authApi, friendlyError } from "../../lib/data";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 
-export function PasswordChange() {
+export function PasswordChange({ email = "" }: { email?: string }) {
   const { confirm: askConfirm } = useConfirm();
   const [oldPass, setOldPass] = useState("");
   const [newPass, setNewPass] = useState("");
@@ -25,35 +24,13 @@ export function PasswordChange() {
     if (!(await askConfirm({ title: "Change your password?", message: "You will use the new password the next time you sign in.", confirmLabel: "Update password", tone: "warning" }))) return;
     setBusy(true);
     try {
-      if (isDemoMode()) {
-        changeDemoPassword(oldPass, newPass);
-        setMsg("Password updated successfully in this demo browser.");
-        setOldPass(""); setNewPass(""); setConfirm("");
-        return;
-      }
-      const { data, error } = await supabase!.auth.getUser();
-      if (error) throw error;
-
-      const userEmail = data.user?.email;
-      if (!userEmail) {
-        throw new Error("Unable to verify current account email.");
-      }
-
-      const check = await supabase!.auth.signInWithPassword({
-        email: userEmail,
-        password: oldPass,
-      });
-      if (check.error) throw new Error("Current password is incorrect.");
-
-      const update = await supabase!.auth.updateUser({ password: newPass });
-      if (update.error) throw update.error;
-
+      await authApi.changePassword(oldPass, newPass, email);
       setMsg("Password updated successfully.");
       setOldPass("");
       setNewPass("");
       setConfirm("");
     } catch (e: any) {
-      setMsg(e.message);
+      setMsg(friendlyError(e, "We couldn’t change your password."));
     } finally {
       setBusy(false);
     }
@@ -63,7 +40,7 @@ export function PasswordChange() {
     <div className="password-section">
       <h3>Change password</h3>
       <p className="muted">
-        Verify your current password before changing it. Demo-mode password changes are stored only in this browser; Supabase will manage real credentials after setup.
+        Enter your current password first, then choose a new one (at least 8 characters).
       </p>
       <form onSubmit={submit} className="password-grid">
         <label>

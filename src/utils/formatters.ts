@@ -1,5 +1,9 @@
 // src/utils/formatters.ts
 
+/** Whole-peso amount with no centavos (used for forecasts). */
+export const moneyWhole = (n: number | string) =>
+  new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(Number(n || 0)));
+
 export const money = (n: number | string) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",

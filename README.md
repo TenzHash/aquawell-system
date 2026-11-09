@@ -1,3 +1,5 @@
+> **v2:** see `docs/V2_DELIVERY_NOTES.md` for setup, the offline demo mode, the new migration and a requirement-to-file map.
+
 # AquaWell Management System — Clean Implementation
 
 This is a new implementation of the AquaWell water refilling station management system. The supplied ZIP was used only as a visual/UI reference; its source code, dependencies, Git history, environment files, and implementation logic were not copied into this project.
@@ -48,7 +50,7 @@ The account role is read from `public.profiles.role`. Missing profile or missing
 - A separate additive status migration introduces `CONFIRMED`, since it is not in the supplied list of existing `orders.status` values. Review that migration against the live constraint before applying.
 - Payment verification is a staff/admin-only RPC. It updates the payment and order summary and creates at most one `sales` row keyed by the order ID.
 - `sales` has one summary row per order but only one `item_name` field. The implementation joins `order_items` for demand forecasting rather than treating the summary text as precise per-product detail.
-- WMA is calculated per inventory item from quantities in `order_items` associated with paid orders. The forecast itself stays decimal; the suggested purchase quantity is rounded up.
+- WMA is calculated per inventory item from quantities in `order_items` associated with paid orders. The forecast is shown as a whole number (rounded); the suggested purchase quantity is rounded up from the exact value.
 
 ## Important boundaries
 

@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
   Bell,
   Building2,
+  MapPinned,
+  SlidersHorizontal,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
@@ -16,6 +18,7 @@ import {
   Moon,
   Package,
   RefreshCw,
+  Store,
   ShieldCheck,
   Sun,
   Truck,
@@ -23,12 +26,17 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { supabase, supabaseConfigured } from "./lib/supabase";
-import { canAccessPage, getCurrentProfile, loadOverview, signOut } from "./lib/data";
+import { supabaseConfigured } from "./lib/supabase";
+import { authApi, canAccessPage, friendlyError, getCurrentProfile, isDemoMode, loadOverview, signOut } from "./lib/data";
+import { demoAccounts } from "./lib/demo";
+import { CartProvider } from "./features/cart/CartContext";
+import { CartButton, CartDrawer } from "./features/cart/CartDrawer";
+import { readStored, writeStored } from "./utils/persist";
 import { roleName } from "./utils/formatters";
 import { LandingPage } from "./pages/LandingPage";
 import { SetupScreen } from "./pages/SetupScreen";
 import { DashboardRouter } from "./pages/DashboardRouter";
+import { RiderLocationBroadcaster } from "./features/map/riderSharing";
 import { useConfirm, type ConfirmOptions } from "./components/ui/ConfirmDialog";
 
 export default function App() {
@@ -66,75 +74,79 @@ export default function App() {
     localStorage.setItem("aquawell-theme", dark ? "dark" : "light");
   }, [dark]);
 
+  const backendReady = supabaseConfigured || isDemoMode();
+  // Tracks whose workspace is already loaded (or loading) so auth events for the same person never reload the app.
+  const profileIdRef = useRef<string | null>(null);
+  const loadingIdRef = useRef<string | null>(null);
+  const lastDataJson = useRef("");
   useEffect(() => {
-    if (!supabaseConfigured) {
-      setLoading(false);
-      return;
-    }
+    if (!backendReady) { setLoading(false); return; }
     let alive = true;
-    supabase!.auth
-      .getSession()
-      .then(async ({ data, error }: any) => {
-        if (error) throw error;
-        if (alive) {
-          setSession(data.session);
-          if (data.session) await loadProfile(data.session.user.id);
-        }
-      })
-      .catch((e: any) => setError(e.message))
+    authApi.getSession()
+      .then(async (sess: any) => { if (alive) { setSession(sess); if (sess) await loadProfile(sess.user.id); } })
+      .catch((e: any) => setError(friendlyError(e)))
       .finally(() => alive && setLoading(false));
-
-    const { data: sub } = supabase!.auth.onAuthStateChange(
-      (event: any, next: any) => {
-        // getSession() handles the initial session and profile lookup. Ignoring
-        // INITIAL_SESSION here prevents a duplicate, racing profile request that
-        // can briefly render the profile-error screen during successful login.
-        if (event === "INITIAL_SESSION") return;
-
-        setSession(next);
-        if (!next) {
-          setProfile(null);
-          setData(null);
-          setError("");
-          setLoading(false);
-        } else {
-          setLoading(true);
-          setError("");
-          void loadProfile(next.user.id);
-        }
-      },
-    );
-    return () => {
-      alive = false;
-      sub.subscription.unsubscribe();
-    };
+    const off = authApi.onChange((event: string, next: any) => {
+      if (event === "INITIAL_SESSION") return;
+      if (!next) {
+        profileIdRef.current = null; loadingIdRef.current = null; lastDataJson.current = "";
+        setSession(null); setProfile(null); setData(null); setError(""); setLoading(false);
+        return;
+      }
+      // Switching browser tabs makes Supabase re-announce the same session (SIGNED_IN / TOKEN_REFRESHED).
+      // If it is the same person we already have loaded, keep the app exactly as it is — no reload, no loading screen.
+      if (profileIdRef.current === next.user.id || loadingIdRef.current === next.user.id) {
+        setSession((prev: any) => (prev?.access_token === next.access_token ? prev : next));
+        return;
+      }
+      setSession(next); setLoading(true); setError(""); void loadProfile(next.user.id);
+    });
+    return () => { alive = false; off(); };
   }, []);
 
+  // Quietly refresh every 20 seconds so order, delivery and payment status stay current without a reload.
+  const lastPayments = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!profile) return;
+    const t = window.setInterval(() => { if (!document.hidden) void refresh(profile, true); }, 20000);
+    return () => window.clearInterval(t);
+  }, [profile]);
+
   async function loadProfile(id: string) {
+    loadingIdRef.current = id;
     try {
       setError("");
       const p = await getCurrentProfile(id);
+      profileIdRef.current = p.id;
       setProfile(p);
-      setPage("Overview");
+      const saved = readStored<string>(`aquawell-page-${p.id}`, "Overview");
+      setPage(canAccessPage(p.role, saved) ? saved : "Overview");
       await refresh(p);
     } catch (e: any) {
-      setError(e.message || "Could not load your profile.");
+      setError(friendlyError(e, "We couldn’t load your account."));
     } finally {
+      loadingIdRef.current = null;
       setLoading(false);
     }
   }
 
-  async function refresh(p = profile) {
+  async function refresh(p = profile, quiet = false) {
     if (!p) return;
     try {
-      setBusy(true);
+      if (!quiet) setBusy(true);
       const d = await loadOverview(p);
-      setData(d);
-      setError("");
+      // Real-time style payment updates: tell the person when one of their orders gets paid.
+      const seen = lastPayments.current; const next: Record<string, string> = {};
+      (d.orders || []).forEach((o: any) => { next[o.id] = o.payment_status; if (quiet && seen[o.id] && seen[o.id] !== "PAID" && o.payment_status === "PAID") setToast(`Payment received for ${o.order_reference || "an order"}.`); });
+      lastPayments.current = next;
+      let json = "";
+      try { json = JSON.stringify(d); } catch { json = ""; }
+      if (!json || json !== lastDataJson.current) { lastDataJson.current = json; setData(d); }
+      if (!quiet) setError("");
     } catch (e: any) {
-      setError(e.message || "Could not load data.");
+      if (!quiet) setError(friendlyError(e, "We couldn’t load your data."));
     } finally {
-      setBusy(false);
+      if (!quiet) setBusy(false);
     }
   }
 
@@ -154,29 +166,16 @@ export default function App() {
     setAuthNotice("");
     try {
       if (authMode === "login") {
-        const { error } = await supabase!.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (error) throw error;
+        await authApi.signIn(email.trim(), password);
+        if (isDemoMode()) { const sess = await authApi.getSession(); setSession(sess); setLoading(true); await loadProfile(sess.user.id); }
       } else {
-        const { data, error } = await supabase!.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: fullName.trim() } },
-        });
-        if (error) throw error;
-        if (!data.session)
-          setAuthNotice(
-            "Account request submitted. Check your email, then sign in after confirmation. The new account starts with the Customer role.",
-          );
-        else
-          setToast(
-            "Account created. Your profile must be provisioned with the intended role before using the system.",
-          );
+        const r = await authApi.signUp(email.trim(), password, fullName.trim());
+        if (isDemoMode()) { const sess = await authApi.getSession(); setSession(sess); setLoading(true); await loadProfile(sess.user.id); }
+        else if (r.needsEmailConfirmation) setAuthNotice("Almost there! Check your email to confirm your account, then sign in.");
+        else setToast("Welcome to AquaWell! Your account is ready.");
       }
     } catch (e: any) {
-      setError(e.message);
+      setError(friendlyError(e));
     } finally {
       setBusy(false);
     }
@@ -211,12 +210,14 @@ export default function App() {
       return true;
     } catch (e: any) {
       if (e?.silent) await refresh();
-      else setError(e.message || "Action failed.");
+      else setError(friendlyError(e, "That didn’t work. Please try again."));
       return false;
     } finally {
       setBusy(false);
     }
   }
+
+  function resetSession() { profileIdRef.current = null; loadingIdRef.current = null; lastDataJson.current = ""; setProfile(null); setData(null); setPage("Overview"); setMobileNav(false); setPublicView(true); lastPayments.current = {}; }
 
   async function handleSignOut() {
     if (
@@ -236,14 +237,14 @@ export default function App() {
     setToast("");
     try {
       await signOut();
+      resetSession();
       setSession(null);
       setProfile(null);
       setData(null);
-      setPage("Overview");
       setMobileNav(false);
     } catch (e: any) {
       // Only report an actual sign-out failure; never run dashboard queries here.
-      setError(e?.message || "Could not sign out. Please try again.");
+      setError(friendlyError(e, "We couldn’t sign you out. Please try again."));
     } finally {
       setBusy(false);
     }
@@ -255,40 +256,19 @@ export default function App() {
       ["Overview", LayoutDashboard],
       ["Notifications", Bell],
     ];
-    if (profile.role === "admin")
-      return [
-        ...common,
-        ["Orders", ClipboardList],
-        ["Rider Status", Truck],
-        ["Companies", Building2],
-        ["Inventory", Package],
-        ["Payments", CircleDollarSign],
-        ["Sales & Forecasts", Activity],
-        ["People & Roles", Users],
-        ["Audit Log", ShieldCheck],
-        ["Account", UserRound],
-      ];
-    if (profile.role === "staff")
-      return [
-        ...common,
-        ["Orders", ClipboardList],
-        ["Rider Status", Truck],
-        ["Payments", CircleDollarSign],
-        ["Customers", Users],
-        ["Companies", Building2],
-        ["Account", UserRound],
-      ];
-    if (profile.role === "delivery")
-      return [...common, ["My Deliveries", Truck], ["Account", UserRound]];
-    return [
-      ...common,
-      ["Order", Droplets],
-      ["My Orders", ClipboardList],
-      ["Account", UserRound],
+    const ok = (page: string) => canAccessPage(profile.role, page, data?.permissions);
+    const all: [string, React.ElementType][] = [
+      ["Orders", ClipboardList], ["Live Map", MapPinned], ["Rider Status", Truck], ["Shop Location", Store], ["Customers", Users], ["Companies", Building2],
+      ["Inventory", Package], ["Sales & Forecasts", Activity], ["People & Roles", Users], ["Access Control", SlidersHorizontal], ["Audit Log", ShieldCheck],
     ];
-  }, [profile]);
+    if (profile.role === "admin" || profile.role === "staff")
+      return [...common, ...all.filter(([l]) => ok(l)), ["Account", UserRound]];
+    if (profile.role === "delivery")
+      return [...common, ["My Deliveries", Truck], ...(ok("Live Map") ? [["Live Map", MapPinned] as [string, React.ElementType]] : []), ["Account", UserRound]];
+    return [...common, ["Order Water", Droplets], ["My Orders", ClipboardList], ["Account", UserRound]];
+  }, [profile, data?.permissions]);
 
-  if (!supabaseConfigured && !publicView)
+  if (!backendReady && !publicView)
     return <SetupScreen onBack={() => setPublicView(true)} />;
 
   if (loading)
@@ -309,21 +289,20 @@ export default function App() {
           <span className="brand-mark">
             <ShieldCheck />
           </span>
-          <p className="eyebrow">ACCOUNT ACCESS CHECK</p>
-          <h1>Profile setup required</h1>
+          <p className="eyebrow">ACCOUNT</p>
+          <h1>Your account isn’t ready yet</h1>
           <p className="muted">
             {error ||
-              "Your authenticated account does not have a usable AquaWell profile."}
+              "We couldn’t find your AquaWell account details."}
           </p>
           <p className="muted">
-            For security, the app will not guess your role or route you to the
-            Customer portal. Ask the administrator to repair the matching
-            public.profiles and, for riders, public.staff record.
+            Please contact the station administrator so they can finish setting
+            up your account.
           </p>
           <button
             className="btn primary"
             onClick={async () => {
-              if (await confirm({ title: "Sign out?", message: "You will be returned to the sign-in page.", confirmLabel: "Sign out", tone: "warning" })) void supabase!.auth.signOut();
+              if (await confirm({ title: "Sign out?", message: "You will be returned to the sign-in page.", confirmLabel: "Sign out", tone: "warning" })) { await signOut(); resetSession(); setSession(null); }
             }}
           >
             Sign out
@@ -400,7 +379,7 @@ export default function App() {
             </h2>
             <p className="muted">
               {authMode === "login"
-                ? "Access your role-specific workspace securely."
+                ? "Sign in to manage your orders and deliveries."
                 : "Create a customer account to get started."}
             </p>
             {authNotice && <div className="alert info">{authNotice}</div>}
@@ -456,11 +435,17 @@ export default function App() {
                 {busy
                   ? "Please wait…"
                   : authMode === "login"
-                    ? "Sign in securely"
+                    ? "Sign in"
                     : "Create account"}
                 <ArrowRight size={17} />
               </button>
             </form>
+            {isDemoMode() && authMode === "login" && (
+              <div className="demo-accounts" aria-label="Demo accounts">
+                <small>Demo accounts (password <b>Demo123!</b>)</small>
+                <div>{demoAccounts.map(a => <button type="button" key={a.id} onClick={() => { setEmail(a.email); setPassword(a.password); }}>{a.role === "delivery" ? "Rider" : a.role[0]!.toUpperCase() + a.role.slice(1)} · {a.full_name.split(" ")[0]}</button>)}</div>
+              </div>
+            )}
             <div className="auth-switch">
               {authMode === "login" ? "New customer? " : "Already registered? "}
               <button
@@ -474,7 +459,7 @@ export default function App() {
               </button>
             </div>
             <p className="fine-print">
-              <ShieldCheck size={14} /> {"Access is determined by your verified database role. No automatic Customer fallback."}
+              <ShieldCheck size={14} /> Your information is kept private and secure.
             </p>
           </div>
           <div className="auth-bottom">
@@ -496,8 +481,9 @@ export default function App() {
   );
 
   const setCurrentPage = (requestedPage: string) => {
-    const safePage = canAccessPage(profile.role, requestedPage) ? requestedPage : "Overview";
+    const safePage = canAccessPage(profile.role, requestedPage, data?.permissions) ? requestedPage : "Overview";
     setPage(safePage);
+    writeStored(`aquawell-page-${profile.id}`, safePage);
     setMobileNav(false);
     setQuery("");
   };
@@ -507,7 +493,7 @@ export default function App() {
     await refresh(updatedProfile);
   };
 
-  return (
+  const shell = (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
         <div className="sidebar-brand">
@@ -515,7 +501,7 @@ export default function App() {
             <Droplets />
           </span>
           <span>
-            AquaWell<small>MANAGEMENT</small>
+            AquaWell<small>WATER STATION</small>
           </span>
           <button
             className="icon-button close-nav"
@@ -602,6 +588,7 @@ export default function App() {
             >
               {dark ? <Sun size={19} /> : <Moon size={19} />}
             </button>
+            {profile.role === "customer" && <CartButton />}
             <button
               className="icon-button"
               onClick={() => setCurrentPage("Notifications")}
@@ -637,6 +624,9 @@ export default function App() {
           </div>
         )}
 
+        {/* Riders share their GPS position automatically while a delivery is out; this stays mounted on every page. */}
+        {profile.role === "delivery" && <RiderLocationBroadcaster active={(data?.orders || []).some((o: any) => o.rider_id === profile.id && o.type === "Delivery" && o.status === "OUT FOR-DELIVERY" && !o.customer_received_at)} />}
+
         <section className="content">
           <div className="page-toolbar">
             <div>
@@ -650,9 +640,9 @@ export default function App() {
               <p className="page-subtitle">
                 {page === "Overview"
                   ? "Here’s what is happening across your workspace."
-                  : page === "Order"
-                    ? "Pick your water and supplies, then place your order."
-                    : `Manage ${page.toLowerCase()} with clear, up-to-date records.`}
+                  : page === "Order Water"
+                    ? "Pick your water and supplies, then check out from your cart."
+                    : page === "Live Map" ? "Follow deliveries as they happen." : page === "Shop Location" ? "Pin your shop on the map." : `Manage ${page.toLowerCase()} with clear, up-to-date records.`}
               </p>
             </div>
             <div className="toolbar-actions">
@@ -684,6 +674,7 @@ export default function App() {
               action={action}
               onNavigate={setCurrentPage}
               onProfileUpdated={handleProfileUpdated}
+              onAccountDeleted={() => { resetSession(); setSession(null); setToast("Your account was deleted. Thank you for using AquaWell."); }}
             />
           )}
         </section>
@@ -691,10 +682,18 @@ export default function App() {
         <footer className="app-footer">
           <span>© {new Date().getFullYear()} AquaWell</span>
           <span>
-            <ShieldCheck size={14} /> Role-secured workspace
+            <ShieldCheck size={14} /> Secure workspace
           </span>
         </footer>
       </main>
     </div>
   );
+
+  return profile.role === "customer" ? (
+    <CartProvider userId={profile.id} defaultAddress={profile.address || ""} defaultPin={profile.pin_lat != null && profile.pin_lng != null ? { lat: Number(profile.pin_lat), lng: Number(profile.pin_lng) } : null}>
+      {shell}
+      <CartDrawer inventory={data?.inventory || []} action={action} onNavigate={setCurrentPage} profile={profile} station={data?.station} onProfileUpdated={handleProfileUpdated}
+        hasActiveDelivery={(data?.orders || []).some((o: any) => o.type === "Delivery" && ["PENDING", "CONFIRMED", "OUT FOR-DELIVERY"].includes(o.status))} />
+    </CartProvider>
+  ) : shell;
 }

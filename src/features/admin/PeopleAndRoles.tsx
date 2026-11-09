@@ -27,7 +27,7 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
         </div>
         <span className="count-chip">{profiles.length} profiles</span>
       </div>
-      <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search people by name, email, role, or ID…" label="Search people and roles" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filteredProfiles.length} />
+      <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search people by name, email or role…" label="Search people and roles" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filteredProfiles.length} />
       <div className="table-wrap">
         <table>
           <thead>
@@ -48,7 +48,7 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
                 <tr key={p.id}>
                   <td data-label="Account">
                     <strong>{p.full_name || "Unnamed profile"}</strong>
-                    <small className="block">ID: {p.id.split("-")[0]}...</small>
+                    
                   </td>
                   <td data-label="Email">{p.email}</td>
                   <td data-label="Current Role">
@@ -100,7 +100,7 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
         {!filteredProfiles.length && (
           <EmptyState
             title="No visible profiles"
-            text="User provisioning requires administrator access."
+            text="No accounts to show."
           />
         )}
       </div>
