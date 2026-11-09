@@ -19,3 +19,13 @@ if (rootElement) {
     "Failed to find the root element to mount the React application.",
   );
 }
+
+// Register the installable PWA shell. Location sharing still requires the rider app
+// to remain active in the foreground; browsers do not expose GPS to service workers.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) =>
+      console.warn("AquaWell offline shell could not be registered:", error),
+    );
+  });
+}

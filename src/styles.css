@@ -1,4 +1,5 @@
 :root {
+  --font-body: "DM Sans", sans-serif;
   font-family: "DM Sans", sans-serif;
   color: #0f172a;
   background: #f8fafc;
@@ -4130,3 +4131,183 @@ input::placeholder, textarea::placeholder { font-family: var(--font-body); }
 .px-photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(235, 246, 255, .88) 0%, rgba(235, 246, 255, .62) 38%, rgba(235, 246, 255, .12) 72%, transparent 100%); }
 html[data-theme="dark"] .px-photo::after { background: linear-gradient(90deg, rgba(8, 20, 38, .9) 0%, rgba(8, 20, 38, .65) 38%, rgba(8, 20, 38, .2) 72%, rgba(8, 20, 38, .05) 100%); }
 @media (max-width: 900px) { .px-photo::after { background: rgba(235, 246, 255, .72); } html[data-theme="dark"] .px-photo::after { background: rgba(8, 20, 38, .72); } }
+
+
+/* Mobile typography and layout normalization */
+@media (max-width: 760px) {
+  /* One typeface across the mobile interface. */
+  html,
+  body,
+  body *,
+  body *::before,
+  body *::after {
+    font-family: var(--font-body) !important;
+  }
+
+  /* Consistent, readable type scale; avoid inherited oversized small text. */
+  body { font-size: 13px; }
+  .sidebar-brand { font-size: 18px !important; line-height: 1.2; }
+  .sidebar-brand > span:nth-child(2) { min-width: 0; white-space: nowrap; }
+  .sidebar-brand small {
+    display: block;
+    font-size: 10px !important;
+    line-height: 1.35;
+    letter-spacing: 1.6px;
+    white-space: nowrap;
+    margin-top: 3px;
+  }
+  .workspace-label,
+  .page-kicker,
+  .eyebrow { font-size: 10px !important; line-height: 1.4; }
+  .nav-item { font-size: 13px !important; line-height: 1.35; }
+  .profile-mini-copy strong { font-size: 12px !important; line-height: 1.35; }
+  .profile-mini-copy small { font-size: 11px !important; line-height: 1.35; }
+  .page-toolbar h1,
+  .page-toolbar h2,
+  .panel-heading h2,
+  .section-heading h2 { font-size: 16px !important; line-height: 1.3; }
+  .page-subtitle,
+  .panel-heading p,
+  .metric-label,
+  .form-grid label,
+  .account-panel,
+  .notification-row,
+  .empty-state,
+  .modal-card,
+  .card { font-size: 13px; line-height: 1.45; }
+  .metric-note,
+  .app-footer,
+  .count-chip,
+  .status,
+  .product-category,
+  .cart-line small,
+  .payment-note small,
+  .checkout-footnote,
+  .product-copy p,
+  th,
+  td small { font-size: 11px !important; line-height: 1.4; }
+
+  /* Keep sidebar content scrollable without squeezing its footer. */
+  .sidebar {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .sidebar-brand,
+  .workspace-label,
+  .sidebar-bottom { flex: 0 0 auto; }
+  .sidebar nav {
+    display: grid;
+    grid-auto-rows: max-content;
+    align-content: start;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 10px;
+  }
+  .sidebar-bottom { margin-top: auto; }
+
+  /* Prevent flex/grid children from forcing text outside their containers. */
+  .main-area,
+  .main-content,
+  .page-content,
+  .page-toolbar,
+  .page-toolbar > *,
+  .panel,
+  .panel-heading,
+  .panel-heading > *,
+  .panel-toolbar,
+  .panel-toolbar > *,
+  .panel-body,
+  .metric-card,
+  .metric-card > *,
+  .dashboard-grid,
+  .dashboard-grid > *,
+  .form-grid,
+  .form-grid > *,
+  .account-panel,
+  .account-panel > *,
+  .topbar,
+  .topbar-left,
+  .topbar-actions,
+  .toolbar-actions,
+  .heading-actions,
+  .row-actions {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .panel-heading h2,
+  .panel-heading p,
+  .page-toolbar h1,
+  .page-toolbar h2,
+  .page-toolbar p,
+  .metric-label,
+  .metric-note,
+  .account-panel p,
+  .form-grid label,
+  .form-grid label > span,
+  .notification-row,
+  .notification-row > *,
+  .empty-state,
+  .empty-state p,
+  .confirm-message,
+  .modal-card,
+  .modal-card p,
+  .card,
+  .card p {
+    overflow-wrap: break-word;
+    word-break: normal;
+    min-width: 0;
+  }
+
+  .panel-heading,
+  .page-toolbar,
+  .section-heading,
+  .panel-toolbar { gap: 8px; }
+
+  .panel-heading h2,
+  .page-toolbar h1,
+  .page-toolbar h2,
+  .section-heading h2 { white-space: normal; }
+
+  .btn,
+  .nav-item,
+  .status,
+  .count-chip,
+  .category-chip,
+  .tab-button,
+  .compact-tabs button {
+    word-break: normal;
+    overflow-wrap: break-word;
+    line-height: 1.35;
+  }
+
+  input,
+  select,
+  textarea,
+  .search-box,
+  .table-search,
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .table-wrap td,
+  .table-wrap td *,
+  .orders-data-table td,
+  .orders-data-table td * {
+    word-break: normal;
+    overflow-wrap: break-word;
+    min-width: 0;
+  }
+}

@@ -15,7 +15,7 @@ export function InventoryTable({ inventory, role, action, permissions, movements
   const canManage = can(role, permissions, "manage_inventory");
   const [tab, setTab] = useState<"items" | "log">("items");
   const [deltas, setDeltas] = useState<Record<string, string>>({});
-  const [query, setQuery] = useState(""); const [rowsPerPage, setRowsPerPage] = useState(10); const [page, setPage] = useState(1);
+  const [query, setQuery] = useState(""); const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest"); const [rowsPerPage, setRowsPerPage] = useState(10); const [page, setPage] = useState(1);
   const [form, setForm] = useState<{ id: number | null; values: InventoryInput } | null>(null);
   const [formError, setFormError] = useState("");
   const [logPage, setLogPage] = useState(1);
@@ -26,8 +26,9 @@ export function InventoryTable({ inventory, role, action, permissions, movements
   const low = useMemo(() => inventory.filter(i => Number(i.stock) <= Number(i.min_stock)), [inventory]);
   const out = inventory.filter(i => Number(i.stock) === 0).length;
   const filtered = inventory.filter(i => [i.name, i.category, i.id, i.stock].some(v => String(v ?? "").toLowerCase().includes(query.toLowerCase())));
-  const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
-  const visible = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const sorted = [...filtered].sort((a: any, b: any) => { const aTime = Date.parse(a.created_at || a.updated_at || "") || 0; const bTime = Date.parse(b.created_at || b.updated_at || "") || 0; const diff = aTime - bTime || Number(a.id || 0) - Number(b.id || 0); return sortOrder === "newest" ? -diff : diff; });
+  const pageCount = Math.max(1, Math.ceil(sorted.length / rowsPerPage));
+  const visible = sorted.slice((page - 1) * rowsPerPage, page * rowsPerPage);
   React.useEffect(() => setPage(1), [query, rowsPerPage]);
   const logPages = Math.max(1, Math.ceil(movements.length / 10)); const logRows = movements.slice((logPage - 1) * 10, logPage * 10);
 
@@ -70,7 +71,7 @@ export function InventoryTable({ inventory, role, action, permissions, movements
 
         {tab === "items" ? (
           <>
-            <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search inventory…" label="Search inventory" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filtered.length} />
+            <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search inventory…" label="Search inventory" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filtered.length} sortOrder={sortOrder} onSortOrderChange={setSortOrder} />
             <div className="table-wrap">
               <table>
                 <thead><tr><th>Image</th><th>Item</th><th>Category</th><th>Unit price</th><th>In stock</th><th>Status</th><th>Alert level</th>{canAdjust && <th>Adjust stock</th>}{canManage && <th>Manage</th>}</tr></thead>

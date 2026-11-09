@@ -41,9 +41,25 @@ export function RiderLocationBroadcaster({ active }: { active: boolean }) {
       err => { if (err.code === err.PERMISSION_DENIED) { setState({ status: "denied", manual: false }); } },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
     );
-    // Heartbeat: keep sending the last known fix even when the rider is standing still, so the map never marks them stale.
+    // Keep the rider's screen awake during an active trip so foreground GPS sharing is less likely to pause.
+    // Wake Lock is best-effort and is not a substitute for native background GPS.
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      if (document.visibilityState !== "visible" || !("wakeLock" in navigator)) return;
+      try { wakeLock = await (navigator as any).wakeLock.request("screen"); } catch { /* unsupported or denied */ }
+    };
+    const onVisibility = () => { if (document.visibilityState === "visible") void requestWakeLock(); };
+    void requestWakeLock();
+    document.addEventListener("visibilitychange", onVisibility);
+    // Heartbeat: keep sending the last known fix even when the rider is standing still.
     const timer = window.setInterval(send, SEND_EVERY_MS);
-    return () => { stopped = true; navigator.geolocation.clearWatch(watchId); window.clearInterval(timer); };
+    return () => {
+      stopped = true;
+      navigator.geolocation.clearWatch(watchId);
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (wakeLock) void wakeLock.release().catch(() => {});
+    };
   }, [enabled]);
 
   return null;

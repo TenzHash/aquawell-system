@@ -108,13 +108,17 @@ export function OrderTable({
   const [isWalkInOpen, setIsWalkInOpen] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-
-  const totalRows = orders.length;
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const sortedOrders = useMemo(() => [...orders].sort((a: any, b: any) => {
+    const diff = new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    return sortOrder === "newest" ? -diff : diff;
+  }), [orders, sortOrder]);
+  const totalRows = sortedOrders.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
   const visibleOrders = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return orders.slice(start, start + rowsPerPage);
-  }, [orders, currentPage, rowsPerPage]);
+    return sortedOrders.slice(start, start + rowsPerPage);
+  }, [sortedOrders, currentPage, rowsPerPage]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -198,6 +202,8 @@ export function OrderTable({
           rowsPerPage={rowsPerPage}
           onRowsPerPageChange={setRowsPerPage}
           resultCount={totalRows}
+          sortOrder={sortOrder}
+          onSortOrderChange={setSortOrder}
         />
       )}
 
@@ -372,12 +378,7 @@ export function OrderTable({
                               .filter(
                                 (r: any) =>
                                   r.profile_id === o.rider_id ||
-                                  (r.availability !== "UNAVAILABLE" &&
-                                    !orders.some(
-                                      (other: any) =>
-                                        other.rider_id === r.profile_id &&
-                                        other.status === "OUT FOR-DELIVERY",
-                                    )),
+                                  r.availability !== "UNAVAILABLE",
                               )
                               .map((r: any) => (
                                 <option key={r.staff_id} value={r.staff_id}>

@@ -117,12 +117,6 @@ export function DashboardRouter({
               </button>
             </div>
           )}
-        {profile.role === "customer" && allOrders.some((o: any) => o.type === "Delivery" && o.status === "OUT FOR-DELIVERY" && !o.customer_received_at) && (
-          <section className="panel tracking-panel">
-            <div className="panel-heading"><div><h2>Track your delivery</h2><p>Your rider’s progress to your address.</p></div></div>
-            <LiveMap compact orders={allOrders} riders={data.riders || []} riderLocations={data.riderLocations || []} station={data.station} role="customer" profileId={profile.id} />
-          </section>
-        )}
         <div className="metric-grid">
           <Metric
             icon={ClipboardList}
@@ -332,17 +326,15 @@ export function DashboardRouter({
           </div>
           {profile.role === "delivery" && (() => {
             const available = (profile.delivery_availability || "AVAILABLE") !== "UNAVAILABLE";
-            const outForDelivery = allOrders.some((o: any) => o.rider_id === profile.id && o.status === "OUT FOR-DELIVERY");
             return (
               <div className="availability-switch">
                 <span className="muted">My availability</span>
                 <ToggleSwitch
                   checked={available}
-                  disabled={busy || (available && outForDelivery)}
+                  disabled={busy}
                   label="Delivery availability"
                   onText="Available"
                   offText="Unavailable"
-                  title={available && outForDelivery ? "Finish your active delivery before going unavailable." : undefined}
                   onChange={async (next) => {
                     const ok = await action(
                       () => updateRiderAvailability(next ? "AVAILABLE" : "UNAVAILABLE"),
@@ -356,6 +348,12 @@ export function DashboardRouter({
             );
           })()}
         </div>
+        {profile.role === "customer" && allOrders.some((o: any) => o.type === "Delivery" && o.status === "OUT FOR-DELIVERY" && !o.customer_received_at) && (
+          <section className="panel tracking-panel" style={{ marginBottom: 18 }}>
+            <div className="panel-heading"><div><h2>Track your delivery</h2><p>Your rider’s progress to your address.</p></div></div>
+            <LiveMap compact orders={allOrders} riders={data.riders || []} riderLocations={data.riderLocations || []} station={data.station} role="customer" profileId={profile.id} />
+          </section>
+        )}
         <OrderTable
           orders={orders}
           query={query}

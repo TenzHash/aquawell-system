@@ -172,7 +172,7 @@ export function canAccessPage(roleValue: unknown, page: string, perms?: Permissi
     admin: ["Overview", "Notifications", "Orders", "Live Map", "Rider Status", "Shop Location", "Companies", "Inventory", "Sales & Forecasts", "People & Roles", "Access Control", "Audit Log", "Account"],
     staff: ["Overview", "Notifications", "Orders", "Live Map", "Rider Status", "Shop Location", "Customers", "Companies", "Inventory", "Account"],
     delivery: ["Overview", "Notifications", "My Deliveries", "Live Map", "Account"],
-    customer: ["Overview", "Notifications", "Order Water", "My Orders", "Account"],
+    customer: ["Notifications", "Order Water", "My Orders", "Account"],
   };
   if (!(pages[role] || []).includes(page)) return false;
   const gate: Record<string, string> = { Orders: "view_orders", "Live Map": "view_live_map", Customers: "view_customers", Companies: "view_companies", Inventory: "view_inventory" };

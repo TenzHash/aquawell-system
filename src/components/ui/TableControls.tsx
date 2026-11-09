@@ -9,11 +9,14 @@ type TableToolbarProps = {
   rowsPerPage: number;
   onRowsPerPageChange: (value: number) => void;
   resultCount: number;
+  sortOrder?: "newest" | "oldest";
+  onSortOrderChange?: (value: "newest" | "oldest") => void;
 };
 
-export function TableToolbar({ query, onQueryChange, placeholder, label, rowsPerPage, onRowsPerPageChange, resultCount }: TableToolbarProps) {
+export function TableToolbar({ query, onQueryChange, placeholder, label, rowsPerPage, onRowsPerPageChange, resultCount, sortOrder, onSortOrderChange }: TableToolbarProps) {
   return <div className="shared-table-toolbar">
     <label className="search-box shared-table-search"><Search size={16} /><input value={query} onChange={e => onQueryChange(e.target.value)} placeholder={placeholder} aria-label={label} /></label>
+    {sortOrder && onSortOrderChange && <label className="rows-per-page-control rows-per-page-control--inline"><span>Sort</span><select value={sortOrder} onChange={e => onSortOrderChange(e.target.value as "newest" | "oldest")} aria-label="Sort newest or oldest"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>}
     <label className="rows-per-page-control rows-per-page-control--inline"><span>Rows</span><select value={rowsPerPage} onChange={e => onRowsPerPageChange(Number(e.target.value))} aria-label="Rows per page"><option value={5}>5</option><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select></label>
     <span className="shared-table-count">{resultCount} results</span>
   </div>;

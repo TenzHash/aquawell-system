@@ -83,27 +83,33 @@ export function LiveMap({ orders, riders = [], riderLocations = [], role, profil
   const riderMarkers = useMemo(() => {
     return riderList.map((r, index) => {
       const active = deliveries.filter(d => d.order.rider_id === r.profile_id).sort((a, b) => String(a.order.out_for_delivery_at).localeCompare(String(b.order.out_for_delivery_at)))[0];
-      const gps = locs.find(l => l.rider_id === r.profile_id && tick - new Date(l.updated_at).getTime() < GPS_FRESH_MS);
-      // A rider with no fresh GPS (offline / not sharing) is shown at the shop. Several offline riders are
-      // spread by a few metres so their markers don't hide each other.
-      let pos: LatLng = { lat: station.lat + index * 0.00007, lng: station.lng + index * 0.00007 }, source = "Offline · at the shop", progress = 0, live = false;
-      if (gps) {
-        pos = { lat: Number(gps.lat), lng: Number(gps.lng) }; live = true;
-        const secs = Math.max(0, Math.round((tick - new Date(gps.updated_at).getTime()) / 1000));
-        source = `Live GPS · ${secs < 5 ? "just now" : `${secs}s ago`}`;
+      // Keep the last persisted fix even when the rider is offline. Only freshness affects the label,
+      // never whether the last known position is displayed.
+      const gps = locs.find(l => l.rider_id === r.profile_id);
+      const ageMs = gps ? Math.max(0, tick - new Date(gps.updated_at).getTime()) : Infinity;
+      const fresh = Boolean(gps && ageMs < GPS_FRESH_MS);
+      let pos: LatLng = { lat: station.lat + index * 0.00007, lng: station.lng + index * 0.00007 }, source = "No location recorded", progress = 0, live = false, hasPosition = false;
+      if (gps && Number.isFinite(Number(gps.lat)) && Number.isFinite(Number(gps.lng))) {
+        pos = { lat: Number(gps.lat), lng: Number(gps.lng) };
+        hasPosition = true;
+        live = fresh;
+        const secs = Math.max(0, Math.round(ageMs / 1000));
+        source = fresh
+          ? `Live GPS · ${secs < 5 ? "just now" : `${secs}s ago`}`
+          : `Last recorded · ${secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m`} ago`;
         progress = active ? gpsProgress(station, pos, active.dest) : 0;
       } else if (active && SIMULATE) {
         // Offline demo only: animate along the route so the offline demo is still watchable.
         progress = tripProgress(active.order, tick); pos = pointAlong(roads[String(active.order.id)] || routePoints(station, active.dest), progress); source = "Simulated route (demo)";
-      } else if (active) source = "Offline · shown at the shop";
-      return { rider: r, pos, active, source, progress, live, unavailable: r.availability === "UNAVAILABLE" && !active };
+      } else if (active) source = "Offline · no recorded GPS";
+      return { rider: r, pos, active, source, progress, live, hasPosition, unavailable: r.availability === "UNAVAILABLE" && !active };
     });
   }, [riderList, locs, deliveries, tick, station, roads]);
 
   /** Progress, ETA and (for riders with a live fix) the rider's real position for one delivery. */
   const trip = (d: { order: any; dest: LatLng }) => {
     const m = riderMarkers.find(x => x.rider.profile_id === d.order.rider_id);
-    if (m?.live && m.active?.order.id === d.order.id) {
+    if (m?.hasPosition && m.active?.order.id === d.order.id) {
       const road = roads[String(d.order.id)];
       const meters = road ? pathMeters(road, metersBetween) : metersBetween(m.pos, d.dest) * 1.3;
       return { progress: m.progress, eta: Math.max(1, Math.ceil(meters / RIDER_SPEED_M_PER_MIN)), from: m.pos as LatLng | null };
@@ -112,7 +118,7 @@ export function LiveMap({ orders, riders = [], riderLocations = [], role, profil
       const progress = tripProgress(d.order, tick);
       return { progress, eta: Math.max(1, Math.ceil(((1 - progress) * SIM_TRIP_MS) / 60000)), from: null as LatLng | null };
     }
-    // Rider is offline: they stay at the shop, so the whole road distance is still ahead.
+    // No stored fix exists yet: estimate from the shop. When a rider has a stale fix, use that last point above.
     const road = roads[String(d.order.id)];
     const meters = road ? pathMeters(road, metersBetween) : metersBetween(station, d.dest) * 1.3;
     return { progress: 0, eta: Math.max(1, Math.ceil(meters / RIDER_SPEED_M_PER_MIN)), from: null as LatLng | null };
@@ -126,7 +132,7 @@ export function LiveMap({ orders, riders = [], riderLocations = [], role, profil
     deliveries.forEach(d => {
       const id = String(d.order.id);
       const m = riderMarkers.find(x => x.rider.profile_id === d.order.rider_id);
-      const from = m?.live && m.active?.order.id === d.order.id ? m.pos : station;
+      const from = m?.hasPosition && m.active?.order.id === d.order.id ? m.pos : station;
       const last = roadFetch.current.get(id);
       const moved = last ? metersBetween(last.from, from) : Infinity;
       const destChanged = last ? metersBetween(last.to, d.dest) > 20 : true;
@@ -169,13 +175,19 @@ export function LiveMap({ orders, riders = [], riderLocations = [], role, profil
   // Frame the station and every active delivery whenever the set of deliveries changes (not on every tick).
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
-    const key = `${station.lat},${station.lng}|${deliveries.map(d => String(d.order.id)).sort().join(",")}`;
+    const riderPoints = riderMarkers.filter(m => m.hasPosition).map(m => toLL(m.pos));
+    const riderKey = riderMarkers.filter(m => m.hasPosition).map(m => `${m.rider.profile_id}:${m.pos.lat.toFixed(5)},${m.pos.lng.toFixed(5)}`).sort().join("|");
+    const key = `${station.lat},${station.lng}|${deliveries.map(d => String(d.order.id)).sort().join(",")}|${riderKey}`;
     if (fitKey.current === key) return;
     fitKey.current = key;
-    if (!deliveries.length) { map.setView([station.lat, station.lng], 14); return; }
-    const bounds = L.latLngBounds([toLL(station), ...deliveries.map(d => toLL(d.dest))]);
+    if (!deliveries.length && !riderPoints.length) { map.setView([station.lat, station.lng], 14); return; }
+    const bounds = L.latLngBounds([
+      toLL(station),
+      ...deliveries.map(d => toLL(d.dest)),
+      ...riderPoints,
+    ]);
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-  }, [deliveries, station.lat, station.lng, compact]);
+  }, [deliveries, riderMarkers, station.lat, station.lng, compact]);
 
   // Delivery pins (rebuilt only when deliveries or the selection change).
   useEffect(() => {

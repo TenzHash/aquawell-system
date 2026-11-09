@@ -119,8 +119,9 @@ export default function App() {
       const p = await getCurrentProfile(id);
       profileIdRef.current = p.id;
       setProfile(p);
-      const saved = readStored<string>(`aquawell-page-${p.id}`, "Overview");
-      setPage(canAccessPage(p.role, saved) ? saved : "Overview");
+      const defaultPage = p.role === "customer" ? "My Orders" : "Overview";
+      const saved = readStored<string>(`aquawell-page-${p.id}`, defaultPage);
+      setPage(canAccessPage(p.role, saved) ? saved : defaultPage);
       await refresh(p);
     } catch (e: any) {
       setError(friendlyError(e, "We couldn’t load your account."));
@@ -253,7 +254,7 @@ export default function App() {
   const nav = useMemo<[string, React.ElementType][]>(() => {
     if (!profile) return [];
     const common: [string, React.ElementType][] = [
-      ["Overview", LayoutDashboard],
+      ...(profile.role === "customer" ? [] : [["Overview", LayoutDashboard] as [string, React.ElementType]]),
       ["Notifications", Bell],
     ];
     const ok = (page: string) => canAccessPage(profile.role, page, data?.permissions);
@@ -481,7 +482,8 @@ export default function App() {
   );
 
   const setCurrentPage = (requestedPage: string) => {
-    const safePage = canAccessPage(profile.role, requestedPage, data?.permissions) ? requestedPage : "Overview";
+    const fallbackPage = profile.role === "customer" ? "My Orders" : "Overview";
+    const safePage = canAccessPage(profile.role, requestedPage, data?.permissions) ? requestedPage : fallbackPage;
     setPage(safePage);
     writeStored(`aquawell-page-${profile.id}`, safePage);
     setMobileNav(false);
