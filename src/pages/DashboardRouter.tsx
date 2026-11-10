@@ -28,8 +28,17 @@ import { PasswordChange } from "../features/auth/PasswordChange";
 import { ProfileEditor } from "../features/auth/ProfileEditor";
 import { PeopleAndRoles } from "../features/admin/PeopleAndRoles";
 import { CompaniesPanel } from "../features/admin/CompaniesPanel";
-import { updateRiderAvailability } from "../lib/data";
-import { markNotificationsRead, verifyPayment } from "../lib/data";
+import { updateRiderAvailability, markNotificationsRead } from "../lib/data";
+import { LiveMap } from "../features/map/LiveMap";
+import { ShareLocationButton } from "../features/map/riderSharing";
+import { ShopLocation } from "../features/admin/ShopLocation";
+import { DeliveryPinSettings } from "../features/account/DeliveryPinSettings";
+import { orderRef } from "../lib/documents";
+import { SalesCharts, DemandChart } from "../features/analytics/SalesCharts";
+import { AccessControl } from "../features/admin/AccessControl";
+import { DeleteAccount } from "../features/account/DeleteAccount";
+import { can } from "../lib/permissions";
+import { DEFAULT_STATION_PIN } from "../config/station";
 import { TablePagination, TableToolbar } from "../components/ui/TableControls";
 import { ToggleSwitch } from "../components/ui/ToggleSwitch";
 
@@ -44,10 +53,9 @@ export function DashboardRouter({
   action,
   onNavigate,
   onProfileUpdated,
+  onAccountDeleted,
 }: any) {
-  const [paymentQuery, setPaymentQuery] = useState("");
-  const [paymentRowsPerPage, setPaymentRowsPerPage] = useState(10);
-  const [paymentPage, setPaymentPage] = useState(1);
+  const perms = data.permissions;
   const [riderQuery, setRiderQuery] = useState("");
   const [riderRowsPerPage, setRiderRowsPerPage] = useState(10);
   const [riderPage, setRiderPage] = useState(1);
@@ -68,10 +76,6 @@ export function DashboardRouter({
         .filter((p: any) => p.role === "customer")
         .map((p: any) => ({ ...p, customer_id: p.id }));
 
-  const filteredPayments = payments.filter((p: any) => [p.order_id, allOrders.find((o: any) => o.id === p.order_id)?.order_reference, p.payment_method, p.payment_status, p.amount].some((value: any) => String(value ?? "").toLowerCase().includes(paymentQuery.toLowerCase())));
-  const paymentPageCount = Math.max(1, Math.ceil(filteredPayments.length / paymentRowsPerPage));
-  const visiblePayments = filteredPayments.slice((paymentPage - 1) * paymentRowsPerPage, paymentPage * paymentRowsPerPage);
-  React.useEffect(() => setPaymentPage(1), [paymentQuery, paymentRowsPerPage]);
   const filteredCustomers = customers.filter((c: any) => [c.full_name, c.name, c.email, c.phone, c.address, c.customer_id, c.id, c.company_name, c.affiliation].some((value: any) => String(value ?? "").toLowerCase().includes(customerQuery.toLowerCase())));
   const customerPageCount = Math.max(1, Math.ceil(filteredCustomers.length / customerRowsPerPage));
   const visibleCustomers = filteredCustomers.slice((customerPage - 1) * customerRowsPerPage, customerPage * customerRowsPerPage);
@@ -117,10 +121,10 @@ export function DashboardRouter({
           <Metric
             icon={ClipboardList}
             label={
-              profile.role === "customer" ? "Your orders" : "Orders in view"
+              profile.role === "customer" ? "Your orders" : "Orders"
             }
             value={allOrders.length}
-            note={`${pending} awaiting confirmation`}
+            note={profile.role === "customer" ? `${pending} waiting to be confirmed` : `${pending} awaiting confirmation`}
             tone="teal"
           />
           {profile.role === "admin" && (
@@ -128,7 +132,7 @@ export function DashboardRouter({
               icon={Package}
               label="Inventory items"
               value={inventory.length}
-              note={`${lowStock} at or below minimum stock`}
+              note={`${lowStock} low on stock`}
               tone="blue"
             />
           )}
@@ -138,24 +142,24 @@ export function DashboardRouter({
               profile.role === "admin"
                 ? "Recorded sales"
                 : profile.role === "customer"
-                  ? "Your payment records"
-                  : "Payments to review"
+                  ? "Payments"
+                  : "Payments to collect"
             }
             value={
-              profile.role === "admin" ? money(totalSales) : payments.length
+              profile.role === "admin" ? money(totalSales) : profile.role === "customer" ? payments.length : payments.filter((p: any) => p.payment_status === "PENDING").length
             }
             note={
               profile.role === "admin"
-                ? "Confirmed sales ledger"
+                ? "Verified paid sales"
                 : profile.role === "customer"
-                  ? "Payment history"
-                  : "Manual verification required"
+                  ? "Your payment history"
+                  : "Orders awaiting payment"
             }
             tone="amber"
           />
           <Metric
             icon={Truck}
-            label="Active deliveries"
+            label={profile.role === "customer" ? "Deliveries on the way" : "Active deliveries"}
             value={
               allOrders.filter((o: any) => o.status === "OUT FOR-DELIVERY")
                 .length
@@ -171,9 +175,9 @@ export function DashboardRouter({
                 <h2>
                   {profile.role === "delivery"
                     ? "Assigned deliveries"
-                    : "Recent orders"}
+                    : profile.role === "customer" ? "Your latest order" : "Recent orders"}
                 </h2>
-                <p>{profile.role === "customer" ? "Your latest orders and their current status" : profile.role === "delivery" ? "Your assigned deliveries and their latest status" : "Latest order activity"}</p>
+                <p>{profile.role === "customer" ? "Your most recent order and where it is now" : profile.role === "delivery" ? "Your assigned deliveries and their latest status" : "Latest order activity"}</p>
               </div>
               <button
                 className="text-button"
@@ -191,7 +195,7 @@ export function DashboardRouter({
               </button>
             </div>
             <OrderTable
-              orders={allOrders.slice(0, 6)}
+              orders={profile.role === "customer" ? [...allOrders].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 1) : allOrders.slice(0, 6)}
               role={profile.role}
               action={action}
               riders={data.riders || []}
@@ -199,6 +203,8 @@ export function DashboardRouter({
               customers={customers}
               busy={busy}
               hideWalkIn={true}
+              permissions={perms}
+              profileId={profile.id}
             />
           </section>
           {!["customer", "delivery"].includes(profile.role) && <section className="panel quick-panel">
@@ -239,12 +245,7 @@ export function DashboardRouter({
                     desc="Validate stock and accept orders"
                     onClick={() => onNavigate("Orders")}
                   />
-                  <QuickAction
-                    icon={CircleDollarSign}
-                    title="Verify payments"
-                    desc="Review payment evidence manually"
-                    onClick={() => onNavigate("Payments")}
-                  />
+                  <QuickAction icon={Truck} title="Live delivery map" desc="Track riders and deliveries" onClick={() => onNavigate("Live Map")} />
                 </>
               )}
             </div>
@@ -254,7 +255,7 @@ export function DashboardRouter({
           <div className="panel-heading">
             <div>
               <h2>Operational attention</h2>
-              <p>Items that may need a staff member’s review</p>
+              <p>Things that may need your attention</p>
             </div>
           </div>
           <div className="attention-grid">
@@ -262,7 +263,7 @@ export function DashboardRouter({
               icon={Package}
               title="Low stock"
               value={lowStock}
-              desc="Items at or below their configured minimum"
+              desc="Items at or below their alert level"
             />}
             <Attention
               icon={ClipboardList}
@@ -272,9 +273,9 @@ export function DashboardRouter({
             />
             <Attention
               icon={CircleDollarSign}
-              title="Payment checks"
+              title="Payments to collect"
               value={payments.filter((p: any) => p.payment_status === "PENDING").length}
-              desc="Payments still requiring manual verification"
+              desc="Confirmed orders that are not yet paid"
             />
           </div>
         </section>}
@@ -286,17 +287,26 @@ export function DashboardRouter({
     const riderPageCount = Math.max(1, Math.ceil(riders.length / riderRowsPerPage));
     const visibleRiders = riders.slice((riderPage - 1) * riderRowsPerPage, riderPage * riderRowsPerPage);
     return <section className="panel">
-      <div className="panel-heading"><div><h2>Rider availability</h2><p>Availability is separate from delivery progress. Active delivery assignments take precedence over the rider's available/off-duty preference.</p></div></div>
+      <div className="panel-heading"><div><h2>Rider availability</h2><p>Whether each rider can take new deliveries, and what they are working on right now.</p></div></div>
       <TableToolbar query={riderQuery} onQueryChange={value => { setRiderQuery(value); setRiderPage(1); }} placeholder="Search rider name or availability…" label="Search riders" rowsPerPage={riderRowsPerPage} onRowsPerPageChange={value => { setRiderRowsPerPage(value); setRiderPage(1); }} resultCount={riders.length} />
       <div className="table-wrap"><table><thead><tr><th>Rider</th><th>Availability</th><th>Active deliveries</th><th>Current stage</th></tr></thead><tbody>{visibleRiders.map((r: any) => {
         const active = allOrders.filter((o: any) => o.rider_id === r.profile_id && o.type === "Delivery" && ["CONFIRMED", "OUT FOR-DELIVERY", "DELIVERED"].includes(o.status) && !o.customer_received_at);
         const out = active.some((o: any) => o.status === "OUT FOR-DELIVERY");
         const status = out ? "OUT FOR DELIVERY" : (r.availability || "AVAILABLE") === "UNAVAILABLE" ? "UNAVAILABLE" : "AVAILABLE";
-        return <tr key={r.profile_id}><td data-label="Rider"><strong>{r.full_name || "Delivery rider"}</strong></td><td data-label="Availability"><span className={`status ${status === "AVAILABLE" ? "success" : status === "UNAVAILABLE" ? "muted" : "warning"}`}>{status === "OUT FOR DELIVERY" ? "Out for delivery" : status === "AVAILABLE" ? "Available" : "Unavailable"}</span></td><td data-label="Active deliveries">{active.length}</td><td data-label="Current stage">{active.map((o: any) => `${o.order_reference || "Order"}: ${o.status}`).join(" · ") || "No active deliveries"}</td></tr>;
+        // Current stage = the rider's single latest delivery, whether it is still out for delivery or already delivered.
+        // A delivery that is still on the road always counts as the latest; otherwise the most recently delivered one.
+        const stamp = (o: any) => new Date((o.status === "DELIVERED" ? o.completed_at : o.out_for_delivery_at) || o.created_at).getTime() || 0;
+        const trips = allOrders.filter((o: any) => o.rider_id === r.profile_id && o.type === "Delivery" && ["OUT FOR-DELIVERY", "DELIVERED"].includes(o.status));
+        const onRoad = trips.filter((o: any) => o.status === "OUT FOR-DELIVERY");
+        const latest = [...(onRoad.length ? onRoad : trips)].sort((a: any, b: any) => stamp(b) - stamp(a))[0];
+        return <tr key={r.profile_id}><td data-label="Rider"><strong>{r.full_name || "Delivery rider"}</strong></td><td data-label="Availability"><span className={`status ${status === "AVAILABLE" ? "success" : status === "UNAVAILABLE" ? "muted" : "warning"}`}>{status === "OUT FOR DELIVERY" ? "Out for delivery" : status === "AVAILABLE" ? "Available" : "Unavailable"}</span></td><td data-label="Active deliveries">{active.length}</td><td data-label="Current stage">{latest ? <><strong>{orderRef(latest)}</strong>: {latest.status}<small className="muted" style={{ display: "block" }}>{latest.status === "DELIVERED" ? "Delivered" : "Left the shop"} {dateFmt(new Date(stamp(latest)).toISOString())}</small></> : "No deliveries yet"}</td></tr>;
       })}</tbody></table>{!riders.length && <p className="muted">No delivery rider profiles found.</p>}</div>
       <TablePagination page={riderPage} pageCount={riderPageCount} onPageChange={setRiderPage} start={riders.length ? (riderPage - 1) * riderRowsPerPage + 1 : 0} end={Math.min(riderPage * riderRowsPerPage, riders.length)} total={riders.length} />
     </section>;
   }
+
+  if (page === "Shop Location" && ["admin", "staff"].includes(profile.role))
+    return <ShopLocation station={data.station || DEFAULT_STATION_PIN} action={action} busy={busy} />;
 
   if (page === "Companies" && ["admin", "staff"].includes(profile.role)) return <CompaniesPanel action={action} busy={busy} role={profile.role} />;
 
@@ -308,25 +318,23 @@ export function DashboardRouter({
             <h2>{page}</h2>
             <p>
               {profile.role === "customer"
-                ? "Orders connected to your authenticated profile."
+                ? "Everything you have ordered, newest activity first."
                 : profile.role === "delivery"
-                  ? "Only orders assigned to your linked rider record are shown."
+                  ? "Deliveries assigned to you."
                   : "Review orders and act only within your role permissions."}
             </p>
           </div>
           {profile.role === "delivery" && (() => {
             const available = (profile.delivery_availability || "AVAILABLE") !== "UNAVAILABLE";
-            const outForDelivery = allOrders.some((o: any) => o.rider_id === profile.id && o.status === "OUT FOR-DELIVERY");
             return (
               <div className="availability-switch">
                 <span className="muted">My availability</span>
                 <ToggleSwitch
                   checked={available}
-                  disabled={busy || (available && outForDelivery)}
+                  disabled={busy}
                   label="Delivery availability"
                   onText="Available"
                   offText="Unavailable"
-                  title={available && outForDelivery ? "Finish your active delivery before going unavailable." : undefined}
                   onChange={async (next) => {
                     const ok = await action(
                       () => updateRiderAvailability(next ? "AVAILABLE" : "UNAVAILABLE"),
@@ -340,6 +348,12 @@ export function DashboardRouter({
             );
           })()}
         </div>
+        {profile.role === "customer" && allOrders.some((o: any) => o.type === "Delivery" && o.status === "OUT FOR-DELIVERY" && !o.customer_received_at) && (
+          <section className="panel tracking-panel" style={{ marginBottom: 18 }}>
+            <div className="panel-heading"><div><h2>Track your delivery</h2><p>Your rider’s progress to your address.</p></div></div>
+            <LiveMap compact orders={allOrders} riders={data.riders || []} riderLocations={data.riderLocations || []} station={data.station} role="customer" profileId={profile.id} />
+          </section>
+        )}
         <OrderTable
           orders={orders}
           query={query}
@@ -351,18 +365,23 @@ export function DashboardRouter({
           inventory={inventory}
           customers={customers}
           busy={busy}
+          permissions={perms}
+          profileId={profile.id}
         />
       </section>
     );
 
-  if (page === "Order" && profile.role === "customer")
+  if (page === "Live Map" && ["admin", "staff", "delivery"].includes(profile.role))
     return (
-      <OrderCatalog
-        inventory={inventory}
-        profile={profile}
-        action={action}
-        onNavigate={onNavigate}
-      />
+      <section className="panel">
+        <div className="panel-heading"><div><h2>Live delivery map</h2><p>Riders’ live locations, delivery addresses and progress, updated every few seconds.</p></div>{profile.role === "delivery" && <ShareLocationButton autoActive={allOrders.some((o: any) => o.rider_id === profile.id && o.type === "Delivery" && o.status === "OUT FOR-DELIVERY" && !o.customer_received_at)} />}</div>
+        <LiveMap orders={allOrders} riders={data.riders || []} riderLocations={data.riderLocations || []} station={data.station} role={profile.role} profileId={profile.id} />
+      </section>
+    );
+
+  if (page === "Order Water" && profile.role === "customer")
+    return (
+      <OrderCatalog inventory={inventory} profile={profile} />
     );
 
   if (page === "Inventory")
@@ -371,83 +390,9 @@ export function DashboardRouter({
         inventory={inventory}
         role={profile.role}
         action={action}
+        permissions={perms}
+        movements={data.movements || []}
       />
-    );
-
-  if (page === "Payments")
-    return (
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <h2>Payment verification</h2>
-            <p>
-              Verify physical cash collection before marking the transaction as
-              paid.
-            </p>
-          </div>
-          <span className="count-chip">
-            {payments.filter((p: any) => p.payment_status === "PENDING").length}{" "}
-            pending
-          </span>
-        </div>
-        <TableToolbar query={paymentQuery} onQueryChange={value => { setPaymentQuery(value); setPaymentPage(1); }} placeholder="Search payments by order, method, or status…" label="Search payments" rowsPerPage={paymentRowsPerPage} onRowsPerPageChange={value => { setPaymentRowsPerPage(value); setPaymentPage(1); }} resultCount={filteredPayments.length} />
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Amount</th>
-                <th>Method</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visiblePayments.map((p: any) => (
-                <tr key={p.payment_id}>
-                  <td data-label="Order">
-                    <strong>{allOrders.find((o: any) => o.id === p.order_id)?.order_reference || `AW-${String(p.order_id).padStart(7, "0")}`}</strong>
-                    <small className="block">{dateFmt(p.created_at)}</small>
-                  </td>
-                  <td data-label="Amount" className="money">{money(p.amount)}</td>
-                  <td data-label="Method">{p.payment_method || "Not recorded"}</td>
-                  <td data-label="Status">
-                    <Status status={p.payment_status} />
-                  </td>
-                  <td data-label="Action">
-                    {["admin", "staff"].includes(profile.role) &&
-                      p.payment_status === "PENDING" && (
-                        <button
-                          className="btn small primary"
-                          onClick={() => {
-                            const linkedOrder = allOrders.find((o: any) => o.id === p.order_id);
-                            const method = linkedOrder?.type === "Delivery" ? "Cash on Delivery" : "Cash";
-                            const ref = linkedOrder?.order_reference || `AW-${String(p.order_id).padStart(7, "0")}`;
-                            action(
-                              () => verifyPayment(p.payment_id, method),
-                              "Payment verified; sale recorded.",
-                              { confirm: { title: "Verify this payment?", message: `Confirm that ${money(p.amount)} (${method}) was collected for ${ref}. A sale will be recorded.`, confirmLabel: "Verify paid" } },
-                            );
-                          }}
-                          disabled={busy}
-                        >
-                          <Check size={14} /> Verify paid
-                        </button>
-                      )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!filteredPayments.length && (
-            <EmptyState
-              title="No payment records"
-              text="Payments will appear here when the database policies permit access."
-            />
-          )}
-        </div>
-        <TablePagination page={paymentPage} pageCount={paymentPageCount} onPageChange={setPaymentPage} start={filteredPayments.length ? (paymentPage - 1) * paymentRowsPerPage + 1 : 0} end={Math.min(paymentPage * paymentRowsPerPage, filteredPayments.length)} total={filteredPayments.length} />
-      </section>
     );
 
   if (page === "Sales & Forecasts")
@@ -458,38 +403,38 @@ export function DashboardRouter({
             icon={CircleDollarSign}
             label="Recorded sales"
             value={money(totalSales)}
-            note={`${sales.length} ledger records`}
+            note={`${sales.length} paid orders`}
             tone="teal"
           />
           <Metric
             icon={Activity}
             label="Sales records"
             value={sales.length}
-            note="One ledger row per qualifying order"
+            note="One record per paid order"
             tone="blue"
           />
           <Metric
             icon={Package}
             label="Tracked products"
             value={inventory.length}
-            note="Inventory items available for forecasting"
+            note="Items we can forecast"
             tone="amber"
           />
           <Metric
             icon={ClipboardList}
-            label="Recent orders"
+            label="Orders"
             value={allOrders.length}
-            note="Current unarchived orders in view"
+            note="Orders on record"
             tone="violet"
           />
         </div>
+        <SalesCharts sales={sales} />
         <section className="panel">
           <div className="panel-heading">
             <div>
-              <h2>Weighted Moving Average</h2>
+              <h2>Product demand forecast</h2>
               <p>
-                Weights 5:3:2; newest completed period receives the highest
-                weight.
+                The most recent completed period counts the most (weights 5 : 3 : 2).
               </p>
             </div>
           </div>
@@ -498,9 +443,7 @@ export function DashboardRouter({
               Forecast = (5 × newest + 3 × previous + 2 × oldest) ÷ 10
             </div>
             <p>
-              Forecasts use the three most recent completed daily, weekly, or
-              monthly periods. Product demand is derived from order_items joined
-              to paid orders; zero-demand periods are included as zero.
+              Forecasts use the three most recent completed days, weeks or months of paid orders. Periods with no sales count as zero.
             </p>
           </div>
           <ForecastTable forecasts={data.forecasts || {}} error={data.forecastError} />
@@ -510,7 +453,7 @@ export function DashboardRouter({
             <div>
               <h2>Sales ledger</h2>
               <p>
-                Verified paid transactions, recorded once per qualifying order.
+                Paid transactions, one record per order.
               </p>
             </div>
             <button
@@ -533,6 +476,9 @@ export function DashboardRouter({
         busy={busy}
       />
     );
+
+  if (page === "Access Control" && profile.role === "admin")
+    return <AccessControl permissions={perms} action={action} busy={busy} />;
 
   if (page === "Notifications")
     return (
@@ -577,8 +523,7 @@ export function DashboardRouter({
             <div>
               <h2>Audit log</h2>
               <p>
-                Who did what and when. Entries are written by the database
-                functions; nothing is fabricated by the client.
+                A record of who did what and when.
               </p>
             </div>
           </div>
@@ -607,7 +552,7 @@ export function DashboardRouter({
             {!auditLogs.length && (
               <EmptyState
                 title="No audit records visible"
-                text="The audit table is empty or restricted by RLS. The current client does not fabricate audit events."
+                text="Activity will be recorded here as your team works."
               />
             )}
           </div>
@@ -623,8 +568,7 @@ export function DashboardRouter({
           <div>
             <h2>Customer records</h2>
             <p>
-              Customer details are managed under the existing public.customers
-              table.
+              Registered customers and their contact details.
             </p>
           </div>
         </div>
@@ -651,7 +595,7 @@ export function DashboardRouter({
           <div>
             <h2>Your account</h2>
             <p>
-              Identity from Supabase Auth and your matching public.profiles row.
+              Your sign-in details and profile.
             </p>
           </div>
         </div>
@@ -674,7 +618,10 @@ export function DashboardRouter({
         </div>
         <div className="panel-heading account-form-heading"><div><h2>Profile information</h2><p>Update your contact and delivery details.</p></div></div>
         <ProfileEditor profile={profile} onSaved={onProfileUpdated || (() => {})} />
-        <PasswordChange />
+        {profile.role === "customer" && <DeliveryPinSettings profile={profile} station={data.station || DEFAULT_STATION_PIN} busy={busy} action={action} onProfileUpdated={onProfileUpdated}
+          hasActiveDelivery={allOrders.some((o: any) => o.type === "Delivery" && ["PENDING", "CONFIRMED", "OUT FOR-DELIVERY"].includes(o.status))} />}
+        <PasswordChange email={profile.email} />
+        {profile.role === "customer" && <DeleteAccount email={profile.email} onDeleted={onAccountDeleted} />}
       </section>
     );
 

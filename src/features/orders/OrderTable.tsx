@@ -7,12 +7,16 @@ import {
   X,
   PackageCheck,
   AlertTriangle,
+  Banknote,
+  Printer,
 } from "lucide-react";
 import { dateFmt, money } from "../../utils/formatters";
 import { Status } from "../../components/ui/Status";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { TablePagination, TableToolbar } from "../../components/ui/TableControls";
 import { WalkInOrderModal } from "./WalkInOrderModal";
+import { ReceiptModal } from "../receipts/ReceiptModal";
+import { can } from "../../lib/permissions";
 import {
   confirmOrder,
   confirmCustomerReceipt,
@@ -22,6 +26,7 @@ import {
   rejectDeliveryAssignment,
   updatePickupStatus,
   insertWalkInOrder,
+  markOrderPaid,
 } from "../../lib/data";
 
 type ConfirmationType = "receipt" | "reject" | "cancel";
@@ -91,17 +96,29 @@ export function OrderTable({
   query = "",
   setQuery,
   showSearch = false,
+  permissions,
+  profileId,
 }: any) {
+  const [receiptFor, setReceiptFor] = useState<number | null>(null);
+  const allow = (key: any) => can(role, permissions, key);
+  const canConfirm = allow("confirm_orders"), canCancel = allow("cancel_orders"), canWalkIn = allow("walk_in_sales"), canCollect = allow("collect_payments"), canReceipt = role === "customer" || allow("issue_receipts"), canSeeContact = role !== "delivery" || allow("view_customer_contact");
+  const canCollectFor = (o: any) => canCollect && o.payment_status === "PENDING" && !(role === "delivery" && !(o.type === "Delivery" && o.rider_id === profileId && ["OUT FOR-DELIVERY", "DELIVERED"].includes(o.status))) && ["CONFIRMED", "OUT FOR-DELIVERY", "DELIVERED", "READY FOR PICKUP", "PICKED UP"].includes(o.status);
+  const receiptButton = (o: any) => canReceipt && o.status !== "CANCELLED" && (role !== "customer" || o.status !== "PENDING") ? <button type="button" className="btn small secondary row-btn" onClick={() => setReceiptFor(o.id)}><Printer size={14} /> Receipt</button> : null;
+  const payButton = (o: any, ref: string) => canCollectFor(o) ? <button type="button" className="btn small primary row-btn" disabled={busy} onClick={() => action(() => markOrderPaid(o.id), `Payment for ${ref} recorded.`, { confirm: { title: "Record this payment?", message: `Confirm that ${money(o.total)} was received in cash for ${ref}${o.type === "Delivery" ? " on delivery" : ""}.`, confirmLabel: "Payment received" } })}><Banknote size={14} /> Payment received</button> : null;
   const [isWalkInOpen, setIsWalkInOpen] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-
-  const totalRows = orders.length;
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const sortedOrders = useMemo(() => [...orders].sort((a: any, b: any) => {
+    const diff = new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    return sortOrder === "newest" ? -diff : diff;
+  }), [orders, sortOrder]);
+  const totalRows = sortedOrders.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
   const visibleOrders = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return orders.slice(start, start + rowsPerPage);
-  }, [orders, currentPage, rowsPerPage]);
+    return sortedOrders.slice(start, start + rowsPerPage);
+  }, [sortedOrders, currentPage, rowsPerPage]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -185,10 +202,12 @@ export function OrderTable({
           rowsPerPage={rowsPerPage}
           onRowsPerPageChange={setRowsPerPage}
           resultCount={totalRows}
+          sortOrder={sortOrder}
+          onSortOrderChange={setSortOrder}
         />
       )}
 
-      {["admin", "staff"].includes(role) && !hideWalkIn && (
+      {["admin", "staff"].includes(role) && canWalkIn && !hideWalkIn && (
         <div className="panel-toolbar order-table-toolbar">
           <button
             type="button"
@@ -196,7 +215,7 @@ export function OrderTable({
             onClick={() => setIsWalkInOpen(true)}
             disabled={busy}
           >
-            <Plus size={16} /> Walk-In Order
+            <Plus size={16} /> Walk-in sale
           </button>
         </div>
       )}
@@ -227,9 +246,10 @@ export function OrderTable({
                   <td data-label="Order">
                     <strong>{orderReference}</strong>
                     <small className="block">{dateFmt(o.created_at)}</small>
-                    {o.address && (
+                    {o.address && canSeeContact && (
                       <small className="block address-text">{o.address}</small>
                     )}
+                    {o.address && !canSeeContact && <small className="block address-text muted">Address hidden by the station</small>}
                   </td>
 
                   {role !== "customer" && (
@@ -247,7 +267,7 @@ export function OrderTable({
                         ? o.rider_name ||
                           (o.rider_id
                             ? "Assigned rider"
-                            : "Awaiting rider assignment")
+                            : "Rider will be assigned soon")
                         : "—"}
                     </td>
                   )}
@@ -259,11 +279,13 @@ export function OrderTable({
                   </td>
 
                   <td data-label="Payment">
-                    <Status status={o.payment_status} />
+                    <Status status={o.payment_status} kind="payment" />
+                    {role === "customer" && o.payment_status === "PENDING" && o.status !== "CANCELLED" && <small className="block muted">{o.type === "Delivery" ? "Pay the rider on arrival" : "Pay at the station"}</small>}
                   </td>
 
                   {role === "customer" && (
                     <td data-label="Action" className="action-cell">
+                      {receiptButton(o)}
                       {o.type === "Delivery" &&
                         o.status === "DELIVERED" &&
                         !o.customer_received_at && (
@@ -280,7 +302,7 @@ export function OrderTable({
                             }
                           >
                             <PackageCheck size={14} />
-                            Order Received
+                            I received my order
                           </button>
                         )}
 
@@ -294,8 +316,10 @@ export function OrderTable({
 
                   {role !== "customer" && (
                     <td data-label="Action" className="action-cell">
+                      {payButton(o, orderReference)}
+                      {receiptButton(o)}
                       {/* PENDING WORKFLOW */}
-                      {["admin", "staff"].includes(role) &&
+                      {["admin", "staff"].includes(role) && canConfirm &&
                         o.status === "PENDING" && (
                           <button
                             type="button"
@@ -354,12 +378,7 @@ export function OrderTable({
                               .filter(
                                 (r: any) =>
                                   r.profile_id === o.rider_id ||
-                                  (r.availability !== "UNAVAILABLE" &&
-                                    !orders.some(
-                                      (other: any) =>
-                                        other.rider_id === r.profile_id &&
-                                        other.status === "OUT FOR-DELIVERY",
-                                    )),
+                                  r.availability !== "UNAVAILABLE",
                               )
                               .map((r: any) => (
                                 <option key={r.staff_id} value={r.staff_id}>
@@ -513,7 +532,7 @@ export function OrderTable({
                         )}
 
                       {/* ABORT / CANCEL WORKFLOW */}
-                      {["admin", "staff"].includes(role) &&
+                      {["admin", "staff"].includes(role) && canCancel &&
                         [
                           "PENDING",
                           "CONFIRMED",
@@ -542,7 +561,7 @@ export function OrderTable({
                             }}
                           >
                             <X size={12} style={{ marginRight: "4px" }} />
-                            Cancel Order
+                            Cancel order
                           </button>
                         )}
 
@@ -575,7 +594,7 @@ export function OrderTable({
         {!orders.length && (
           <EmptyState
             title={query ? "No matching orders" : "Nothing to show yet"}
-            text={query ? "Try a different search term." : "Orders appear here when they are visible under your account's row-level security policies."}
+            text={query ? "Try a different search term." : "Orders will appear here as soon as they come in."}
           />
         )}
       </div>
@@ -606,6 +625,8 @@ export function OrderTable({
           if (succeeded) setIsWalkInOpen(false);
         }}
       />
+
+      {receiptFor != null && <ReceiptModal orderId={receiptFor} onClose={() => setReceiptFor(null)} />}
 
       {/* IN-APP CONFIRMATION DIALOG */}
       {confirmation && currentConfirmationContent && (

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { Check, ShieldCheck } from "lucide-react";
+import { Check, KeyRound } from "lucide-react";
 import { dateFmt, roleName } from "../../utils/formatters";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { updateUserRole } from "../../lib/data";
+import { updateUserRole, authApi } from "../../lib/data";
 import { TablePagination, TableToolbar } from "../../components/ui/TableControls";
 
 export function PeopleAndRoles({ profiles, action, busy }: any) {
@@ -21,13 +21,12 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
         <div>
           <h2>People & role assignments</h2>
           <p>
-            Assign roles to accounts. Employees should register normally, then
-            be promoted to Staff or Delivery here.
+            Assign roles, review accounts, and send secure password reset links. Employees should register normally, then be promoted to Staff or Delivery here.
           </p>
         </div>
         <span className="count-chip">{profiles.length} profiles</span>
       </div>
-      <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search people by name, email, role, or ID…" label="Search people and roles" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filteredProfiles.length} />
+      <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search people by name, email or role…" label="Search people and roles" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filteredProfiles.length} />
       <div className="table-wrap">
         <table>
           <thead>
@@ -37,6 +36,7 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
               <th>Current Role</th>
               <th>Joined</th>
               <th>Manage Role</th>
+              <th>Account Recovery</th>
             </tr>
           </thead>
           <tbody>
@@ -48,7 +48,7 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
                 <tr key={p.id}>
                   <td data-label="Account">
                     <strong>{p.full_name || "Unnamed profile"}</strong>
-                    <small className="block">ID: {p.id.split("-")[0]}...</small>
+                    
                   </td>
                   <td data-label="Email">{p.email}</td>
                   <td data-label="Current Role">
@@ -92,6 +92,20 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
                       </button>
                     </div>
                   </td>
+                  <td data-label="Account Recovery" className="action-cell people-recovery-cell">
+                    <button
+                      type="button"
+                      className="btn small secondary"
+                      disabled={busy || !p.email}
+                      onClick={() => action(
+                        () => authApi.requestPasswordReset(p.email),
+                        `Password reset instructions sent to ${p.email}.`,
+                        { confirm: { title: "Send password reset email?", message: `A secure password reset link will be sent to ${p.email}.`, confirmLabel: "Send reset email" } },
+                      )}
+                    >
+                      <KeyRound size={14} /> Send reset link
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -100,7 +114,7 @@ export function PeopleAndRoles({ profiles, action, busy }: any) {
         {!filteredProfiles.length && (
           <EmptyState
             title="No visible profiles"
-            text="User provisioning requires administrator access."
+            text="No accounts to show."
           />
         )}
       </div>

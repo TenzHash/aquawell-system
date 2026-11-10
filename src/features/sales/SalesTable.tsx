@@ -8,13 +8,15 @@ export function SalesTable({ sales }: any) {
   const [query, setQuery] = useState("");
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [page, setPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const filteredSales = sales.filter((sale: any) => [sale.customer_name, sale.item_name, sale.payment_method, sale.date].some((value: any) => String(value ?? "").toLowerCase().includes(query.toLowerCase())));
-  const pageCount = Math.max(1, Math.ceil(filteredSales.length / rowsPerPage));
-  const visibleSales = filteredSales.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const sortedSales = [...filteredSales].sort((a: any, b: any) => { const date = (v: any) => { const parsed = new Date(v.created_at || v.date || 0).getTime(); return Number.isFinite(parsed) ? parsed : 0; }; const diff = date(a) - date(b); return sortOrder === "newest" ? -diff : diff; });
+  const pageCount = Math.max(1, Math.ceil(sortedSales.length / rowsPerPage));
+  const visibleSales = sortedSales.slice((page - 1) * rowsPerPage, page * rowsPerPage);
   React.useEffect(() => setPage(1), [query, rowsPerPage]);
   return (
     <>
-    <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search sales, customer, item, or transaction…" label="Search sales" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filteredSales.length} />
+    <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search sales, customer, item, or transaction…" label="Search sales" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={filteredSales.length} sortOrder={sortOrder} onSortOrderChange={setSortOrder} />
     <div className="table-wrap">
       <table>
         <thead>

@@ -1,3 +1,5 @@
+> **v2:** see `docs/V2_DELIVERY_NOTES.md` for setup, the offline demo mode, the new migration and a requirement-to-file map.
+
 # AquaWell Management System — Clean Implementation
 
 This is a new implementation of the AquaWell water refilling station management system. The supplied ZIP was used only as a visual/UI reference; its source code, dependencies, Git history, environment files, and implementation logic were not copied into this project.
@@ -48,7 +50,7 @@ The account role is read from `public.profiles.role`. Missing profile or missing
 - A separate additive status migration introduces `CONFIRMED`, since it is not in the supplied list of existing `orders.status` values. Review that migration against the live constraint before applying.
 - Payment verification is a staff/admin-only RPC. It updates the payment and order summary and creates at most one `sales` row keyed by the order ID.
 - `sales` has one summary row per order but only one `item_name` field. The implementation joins `order_items` for demand forecasting rather than treating the summary text as precise per-product detail.
-- WMA is calculated per inventory item from quantities in `order_items` associated with paid orders. The forecast itself stays decimal; the suggested purchase quantity is rounded up.
+- WMA is calculated per inventory item from quantities in `order_items` associated with paid orders. The forecast is shown as a whole number (rounded); the suggested purchase quantity is rounded up from the exact value.
 
 ## Important boundaries
 
@@ -109,3 +111,18 @@ Review and apply `supabase/migrations/202610150001_delivery_confirmation_and_com
 ### Build and validation
 
 Run `npm ci` (or `npm install`) on your development machine, then `npm run build`. The uploaded ZIP's `node_modules` directory was created on a different platform and lacks required platform-specific optional packages, so it should not be reused. TypeScript validation completed with `tsc --noEmit` in the review environment.
+
+### Rider GPS limitation
+
+The rider's location is saved to `rider_locations` and the last saved coordinates remain visible when the rider goes offline. The rider app also requests the Screen Wake Lock API during active deliveries when supported. However, mobile browsers do not allow a service worker to access GPS, and a PWA cannot guarantee continuous background location tracking after the rider switches apps, locks the phone, or the operating system suspends the browser. For guaranteed background GPS, a native Android/iOS wrapper with the platform's background-location permission is required. Keep AquaWell open in the foreground during delivery for the most reliable updates.
+
+### Rider location visibility
+
+- Customer maps show the assigned rider's latest saved location while the order is out for delivery.
+- Rider maps show the delivery destination saved on the order.
+- When the rider is offline, maps display the last recorded rider position and label it with its age instead of moving the marker back to the shop.
+- Customer delivery coordinates are only as accurate as the pin saved on the order. If no delivery pin was saved, the map uses the application's address fallback and should not be treated as a precise GPS position.
+
+### Database migration
+
+Apply `supabase/migrations/202611100001_rider_multiple_active_assignments.sql` to the connected Supabase project. This removes the one-active-delivery restriction while preserving explicit rider availability, assignment notifications, delivery events, and audit logging.

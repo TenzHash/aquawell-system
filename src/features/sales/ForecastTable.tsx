@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { DemandChart } from "../analytics/SalesCharts";
 import { TablePagination, TableToolbar } from "../../components/ui/TableControls";
+
+/** WMA results are shown as whole units (you cannot sell or buy part of a gallon). */
+const whole = (n: any) => Math.round(Number(n) || 0);
 
 export function ForecastTable({ forecasts, error }: any) {
   const availablePeriods = ["daily", "weekly", "monthly"] as string[];
@@ -26,6 +30,7 @@ export function ForecastTable({ forecasts, error }: any) {
         ))}
         <span className="forecast-period-note">{activePeriod.charAt(0).toUpperCase() + activePeriod.slice(1)} demand forecast</span>
       </div>
+      <DemandChart rows={forecasts[activePeriod] || []} period={activePeriod} />
       <TableToolbar query={query} onQueryChange={setQuery} placeholder="Search forecast items…" label="Search forecast items" rowsPerPage={rowsPerPage} onRowsPerPageChange={setRowsPerPage} resultCount={rows.length} />
       <div className="table-wrap">
         <table>
@@ -45,13 +50,13 @@ export function ForecastTable({ forecasts, error }: any) {
               <tr key={r.inventory_id}>
                 <td data-label="Inventory item">
                   <strong>{r.item_name}</strong>
-                  <small className="block">Inventory ID {r.inventory_id}</small>
+                  
                 </td>
                 <td data-label="Newest completed">{Number(r.newest_period_demand || 0)}</td>
                 <td data-label="Previous">{Number(r.previous_period_demand || 0)}</td>
                 <td data-label="Oldest">{Number(r.oldest_period_demand || 0)}</td>
                 <td data-label="Demand trend"><div className="forecast-demand-bars" role="img" aria-label={`Demand trend: ${r.oldest_period_demand || 0}, ${r.previous_period_demand || 0}, ${r.newest_period_demand || 0}`}>{[r.oldest_period_demand, r.previous_period_demand, r.newest_period_demand].map((value: any, i: number) => { const max = Math.max(1, Number(r.oldest_period_demand || 0), Number(r.previous_period_demand || 0), Number(r.newest_period_demand || 0)); return <span key={i} title={String(value ?? 0)} style={{ height: `${Math.max(8, Number(value || 0) / max * 100)}%` }} />; })}</div></td>
-                <td data-label="WMA forecast" className="money"><span className="forecast-number">{Number(r.forecast || 0).toFixed(2)}</span></td>
+                <td data-label="WMA forecast" className="money"><span className="forecast-number">{whole(r.forecast)}</span></td>
                 <td data-label="Suggested purchase qty."><span className="forecast-number">{Math.ceil(Number(r.forecast || 0))}</span></td>
               </tr>
             ))}

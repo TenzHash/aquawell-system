@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Placeholder image">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fd4ff"/><stop offset="1" stop-color="#2f86dc"/></linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd0ff"/><stop offset="1" stop-color="#1d6fd1"/></linearGradient>
+    <g id="gallon">
+      <rect x="-50" y="-250" width="100" height="50" rx="14" fill="#1d4ed8"/><rect x="-36" y="-276" width="72" height="34" rx="10" fill="#2563eb"/>
+      <path d="M-110 -190 h220 q40 0 40 46 v300 q0 76 -76 76 h-148 q-76 0 -76 -76 v-300 q0 -46 40 -46z" fill="#e8f5ff" stroke="#1d4ed8" stroke-width="8"/>
+      <path d="M-146 -40 q73 -30 146 0 t146 0 v196 q0 76 -76 76 h-140 q-76 0 -76 -76z" fill="url(#water)" transform="translate(0 -8)"/>
+      <rect x="-96" y="-168" width="26" height="320" rx="13" fill="#fff" opacity=".45"/>
+    </g>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <circle cx="1500" cy="220" r="260" fill="#fff" opacity=".16"/><circle cx="300" cy="320" r="160" fill="#fff" opacity=".12"/><circle cx="1000" cy="150" r="90" fill="#fff" opacity=".12"/>
+  <use href="#gallon" transform="translate(1250 600) scale(.9)"/>
+  <use href="#gallon" transform="translate(1560 540) scale(1.25)"/>
+  <use href="#gallon" transform="translate(1810 640) scale(.8)"/>
+  <path d="M0 800 C 300 730 560 880 900 810 S 1500 740 1920 800 V1080 H0Z" fill="#fff" opacity=".22"/>
+  <path d="M0 890 C 360 830 640 960 1000 890 S 1580 850 1920 900 V1080 H0Z" fill="#1d4ed8" opacity=".3"/>
+  <text x="1560" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="34" font-weight="600" fill="#fff" opacity=".9">Your photo goes here</text>
+</svg>
