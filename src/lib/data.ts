@@ -656,6 +656,16 @@ export const authApi = {
     if (reauth) throw new Error('Your current password is incorrect.');
     const { error } = await db.auth.updateUser({ password: next }); if (error) throw new Error(friendlyError(error, 'We couldn\u2019t change your password.'));
   },
+  async requestPasswordReset(email: string) {
+    if (isDemoMode()) throw new Error('Password recovery emails are available when AquaWell is connected to Supabase.');
+    const { error } = await requireSupabase().auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) throw new Error(friendlyError(error, 'We couldn\u2019t send the password reset email.'));
+  },
+  async updateRecoveredPassword(next: string) {
+    if (isDemoMode()) throw new Error('Password recovery is unavailable in demo mode.');
+    const { error } = await requireSupabase().auth.updateUser({ password: next });
+    if (error) throw new Error(friendlyError(error, 'We couldn\u2019t update your password.'));
+  },
 };
 
 // ---------------------------------------------------------------------------------------------

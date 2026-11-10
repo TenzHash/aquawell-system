@@ -4311,3 +4311,218 @@ html[data-theme="dark"] .px-photo::after { background: linear-gradient(90deg, rg
     min-width: 0;
   }
 }
+
+
+/* =====================================================================
+   AquaWell UI consistency pass — responsive actions, typography and layout
+   ===================================================================== */
+:root { --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif; --font-head: var(--font-body); }
+html, body, body *, button, input, select, textarea, label, table, th, td,
+h1, h2, h3, h4, h5, h6, strong, small, summary, legend {
+  font-family: var(--font-body) !important;
+}
+
+/* Consistent sizing and predictable wrapping on every screen. */
+.app-shell, .main-area, .content, .page-toolbar, .page-toolbar > *,
+.panel, .panel-heading, .panel-heading > *, .panel-toolbar, .panel-toolbar > *,
+.table-wrap, .table-toolbar, .table-toolbar > *, .form-stack, .form-grid,
+.account-details, .dashboard-grid, .dashboard-grid > *, .metric-card,
+.metric-card > *, .profile-mini, .profile-mini-copy {
+  min-width: 0;
+  max-width: 100%;
+}
+.panel, .metric-card, .auth-card, .modal-card { overflow-wrap: anywhere; }
+.panel-heading { gap: 12px; }
+.panel-heading h2, .panel-heading p, .page-subtitle { overflow-wrap: break-word; word-break: normal; }
+.table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-wrap table { width: 100%; }
+.table-wrap td, .table-wrap th { overflow-wrap: anywhere; }
+.address-text, .customer-address, .order-reference, .profile-mini-copy strong { overflow-wrap: anywhere; word-break: normal; }
+
+/* Order actions: compact, balanced controls instead of full-width tall buttons. */
+.action-cell { white-space: normal !important; vertical-align: middle; }
+.action-cell .btn, .action-cell .row-btn {
+  width: auto !important;
+  max-width: 100%;
+  min-height: 36px;
+  margin: 3px !important;
+  padding: 8px 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  line-height: 1.25;
+  white-space: normal;
+}
+.row-btn { margin-bottom: 3px !important; }
+.action-cell .text-button { white-space: normal; }
+
+/* Authentication and user-management recovery controls. */
+.auth-forgot { display: flex; justify-content: flex-end; align-items: center; width: 100%; min-width: 0; margin: 7px 0 2px; position: relative; z-index: 1; }
+.auth-forgot button, .auth-switch button { border: 0; background: transparent; color: var(--teal); font-weight: 700; padding: 5px 0; }
+.auth-forgot button:hover, .auth-switch button:hover { text-decoration: underline; }
+.recovery-panel { display: flex; flex-direction: column; justify-content: center; }
+.people-recovery-cell .btn { white-space: nowrap; }
+
+/* Sidebar uses a fixed header/footer and a genuinely scrollable navigation region. */
+@media (max-width: 760px) {
+  .sidebar {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .sidebar-brand, .workspace-label, .sidebar-bottom { flex: 0 0 auto; }
+  .sidebar nav {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding: 0 0 12px;
+  }
+  .sidebar-bottom { margin-top: auto; padding-top: 10px; }
+  .nav-item { flex: 0 0 auto; min-height: 44px; }
+  .content { padding-left: clamp(12px, 3vw, 20px); padding-right: clamp(12px, 3vw, 20px); }
+  .page-toolbar { flex-wrap: wrap; gap: 10px; }
+  .page-toolbar > div { min-width: 0; }
+  .toolbar-actions, .heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .toolbar-actions > *, .heading-actions > * { min-width: 0; max-width: 100%; }
+  .panel-heading { flex-wrap: wrap; }
+  .panel-heading > div { flex: 1 1 180px; }
+  .panel-heading .count-chip { flex: 0 0 auto; }
+  .table-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .table-toolbar > * { min-width: 0; flex: 1 1 150px; }
+  .search-box, .search-box input { width: 100%; }
+  .orders-data-table tbody td.action-cell,
+  .table-wrap > table:not(.orders-data-table) tbody td.action-cell {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+    align-items: stretch;
+    gap: 7px;
+    min-width: 0;
+    padding: 10px 12px !important;
+  }
+  .orders-data-table tbody td.action-cell::before,
+  .table-wrap > table:not(.orders-data-table) tbody td.action-cell::before {
+    grid-column: 1 / -1;
+    margin: 0 0 2px !important;
+  }
+  .orders-data-table tbody td.action-cell > .btn,
+  .orders-data-table tbody td.action-cell > button,
+  .table-wrap > table:not(.orders-data-table) tbody td.action-cell > .btn,
+  .table-wrap > table:not(.orders-data-table) tbody td.action-cell > button {
+    width: 100% !important;
+    min-width: 0;
+    min-height: 40px;
+    margin: 0 !important;
+    padding: 8px 9px;
+    font-size: 12px;
+  }
+  .people-recovery-cell .btn { white-space: normal; }
+  .role-manage { flex-wrap: wrap; }
+  .role-manage .compact-select { flex: 1 1 100%; width: 100%; }
+  .role-manage .role-save { flex: 1 1 100%; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .modal-card { width: min(94vw, 560px); max-width: 94vw; }
+  .auth-panel { padding-left: clamp(16px, 5vw, 28px); padding-right: clamp(16px, 5vw, 28px); }
+}
+@media (max-width: 420px) {
+  .orders-data-table tbody td.action-cell,
+  .table-wrap > table:not(.orders-data-table) tbody td.action-cell { grid-template-columns: minmax(0, 1fr); }
+  .orders-data-table tbody td.action-cell::before,
+  .table-wrap > table:not(.orders-data-table) tbody td.action-cell::before { grid-column: 1; }
+  .topbar { gap: 8px; }
+  .topbar h1 { overflow-wrap: anywhere; }
+  .metric-grid { grid-template-columns: minmax(0, 1fr); }
+  .auth-card h2 { font-size: clamp(22px, 7vw, 26px); }
+}
+@media (min-width: 761px) {
+  .content { max-width: 1600px; margin-inline: auto; }
+  .action-cell { min-width: 180px; }
+}
+
+
+/* Mobile authentication spacing and text wrapping safeguards. */
+@media (max-width: 760px) {
+  .auth-panel {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 100svh;
+    padding-top: max(24px, env(safe-area-inset-top));
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 385px;
+    min-width: 0;
+  }
+  .auth-card > .muted,
+  .auth-notice,
+  .auth-card .alert,
+  .fine-print,
+  .auth-bottom {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  .auth-card form.form-stack {
+    gap: 16px;
+  }
+  .auth-forgot {
+    margin-top: 8px;
+    margin-bottom: 3px;
+  }
+  .auth-forgot button,
+  .auth-switch button {
+    min-height: 32px;
+    line-height: 1.4;
+    white-space: normal;
+    text-align: right;
+  }
+  .auth-bottom {
+    width: 100%;
+    max-width: 385px;
+    margin: 28px auto 0;
+    line-height: 1.5;
+    text-align: center;
+  }
+  .auth-mobile-brand {
+    margin-bottom: clamp(24px, 7vh, 42px);
+  }
+  .form-stack label,
+  .form-stack input,
+  .password-field {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .form-stack input {
+    box-sizing: border-box;
+    width: 100%;
+  }
+  .btn.full {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
+@media (max-width: 380px) {
+  .auth-panel {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .auth-mobile-brand {
+    margin-bottom: 25px;
+  }
+  .auth-card h2 {
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  .auth-forgot button {
+    font-size: 11px;
+  }
+}

@@ -61,7 +61,10 @@ export default function App() {
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [showPassword, setShowPassword] = useState(false),
-    [fullName, setFullName] = useState("");
+    [fullName, setFullName] = useState(""),
+    [passwordRecovery, setPasswordRecovery] = useState(false),
+    [recoveryPassword, setRecoveryPassword] = useState(""),
+    [recoveryConfirm, setRecoveryConfirm] = useState("");
 
   useEffect(() => {
     if (!toast) return;
@@ -87,6 +90,7 @@ export default function App() {
       .catch((e: any) => setError(friendlyError(e)))
       .finally(() => alive && setLoading(false));
     const off = authApi.onChange((event: string, next: any) => {
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
       if (event === "INITIAL_SESSION") return;
       if (!next) {
         profileIdRef.current = null; loadingIdRef.current = null; lastDataJson.current = "";
@@ -119,9 +123,10 @@ export default function App() {
       const p = await getCurrentProfile(id);
       profileIdRef.current = p.id;
       setProfile(p);
-      const defaultPage = p.role === "customer" ? "My Orders" : "Overview";
-      const saved = readStored<string>(`aquawell-page-${p.id}`, defaultPage);
+      const defaultPage = p.role === "customer" ? "Order Water" : "Overview";
+      const saved = p.role === "customer" ? defaultPage : readStored<string>(`aquawell-page-${p.id}`, defaultPage);
       setPage(canAccessPage(p.role, saved) ? saved : defaultPage);
+      if (p.role === "customer") writeStored(`aquawell-page-${p.id}`, "Order Water");
       await refresh(p);
     } catch (e: any) {
       setError(friendlyError(e, "We couldn’t load your account."));
@@ -166,7 +171,11 @@ export default function App() {
     setError("");
     setAuthNotice("");
     try {
-      if (authMode === "login") {
+      if (authMode === "forgot") {
+        await authApi.requestPasswordReset(email.trim());
+        setAuthNotice("If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder.");
+        setAuthMode("login");
+      } else if (authMode === "login") {
         await authApi.signIn(email.trim(), password);
         if (isDemoMode()) { const sess = await authApi.getSession(); setSession(sess); setLoading(true); await loadProfile(sess.user.id); }
       } else {
@@ -218,7 +227,7 @@ export default function App() {
     }
   }
 
-  function resetSession() { profileIdRef.current = null; loadingIdRef.current = null; lastDataJson.current = ""; setProfile(null); setData(null); setPage("Overview"); setMobileNav(false); setPublicView(true); lastPayments.current = {}; }
+  function resetSession() { profileIdRef.current = null; loadingIdRef.current = null; lastDataJson.current = ""; setProfile(null); setData(null); setPage("Overview"); setPasswordRecovery(false); setRecoveryPassword(""); setRecoveryConfirm(""); setMobileNav(false); setPublicView(true); lastPayments.current = {}; }
 
   async function handleSignOut() {
     if (
@@ -312,6 +321,22 @@ export default function App() {
       </div>
     );
 
+  if (passwordRecovery && session) {
+    async function submitRecoveredPassword(e: React.FormEvent) {
+      e.preventDefault(); setError(""); setAuthNotice("");
+      if (recoveryPassword.length < 8) { setError("Use at least 8 characters for your new password."); return; }
+      if (recoveryPassword !== recoveryConfirm) { setError("The password confirmation does not match."); return; }
+      setBusy(true);
+      try {
+        await authApi.updateRecoveredPassword(recoveryPassword);
+        setPasswordRecovery(false); setRecoveryPassword(""); setRecoveryConfirm("");
+        setToast("Your password has been updated successfully.");
+      } catch (e: any) { setError(friendlyError(e, "We couldn’t update your password.")); }
+      finally { setBusy(false); }
+    }
+    return <div className="auth-page"><div className="auth-panel recovery-panel"><div className="auth-mobile-brand"><span className="brand-mark"><Droplets /></span><strong>AquaWell</strong></div><div className="auth-card"><span className="eyebrow">ACCOUNT RECOVERY</span><h2>Set a new password</h2><p className="muted">Choose a new password with at least 8 characters.</p>{error && <div className="alert error">{error}</div>}<form className="form-stack" onSubmit={submitRecoveredPassword}><label>New password<input type="password" minLength={8} autoComplete="new-password" required value={recoveryPassword} onChange={e => setRecoveryPassword(e.target.value)} /></label><label>Confirm new password<input type="password" minLength={8} autoComplete="new-password" required value={recoveryConfirm} onChange={e => setRecoveryConfirm(e.target.value)} /></label><button className="btn primary full" disabled={busy}>{busy ? "Updating…" : "Update password"}<ArrowRight size={17} /></button></form></div></div></div>;
+  }
+
   if (!session || !profile) {
     if (publicView)
       return (
@@ -376,12 +401,12 @@ export default function App() {
             <h2>
               {authMode === "login"
                 ? "Sign in to continue"
-                : "Create your account"}
+                : authMode === "forgot" ? "Reset your password" : "Create your account"}
             </h2>
             <p className="muted">
               {authMode === "login"
                 ? "Sign in to manage your orders and deliveries."
-                : "Create a customer account to get started."}
+                : authMode === "forgot" ? "Enter your account email and we’ll send you a secure reset link." : "Create a customer account to get started."}
             </p>
             {authNotice && <div className="alert info">{authNotice}</div>}
             {error && <div className="alert error">{error}</div>}
@@ -407,7 +432,7 @@ export default function App() {
                   autoComplete="email"
                 />
               </label>
-              <label>
+              {authMode !== "forgot" && <label>
                 Password
                 <div className="password-field">
                   <input
@@ -431,23 +456,25 @@ export default function App() {
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-              </label>
+              </label>}
               <button className="btn primary full" disabled={busy}>
                 {busy
                   ? "Please wait…"
                   : authMode === "login"
                     ? "Sign in"
-                    : "Create account"}
+                    : authMode === "forgot" ? "Send reset link" : "Create account"}
                 <ArrowRight size={17} />
               </button>
             </form>
+            {authMode === "login" && <div className="auth-forgot"><button type="button" onClick={() => { setAuthMode("forgot"); setError(""); setAuthNotice(""); }}>Forgot password?</button></div>}
+            {authMode === "forgot" && <div className="auth-switch"><button type="button" onClick={() => { setAuthMode("login"); setError(""); setAuthNotice(""); }}>Back to sign in</button></div>}
             {isDemoMode() && authMode === "login" && (
               <div className="demo-accounts" aria-label="Demo accounts">
                 <small>Demo accounts (password <b>Demo123!</b>)</small>
                 <div>{demoAccounts.map(a => <button type="button" key={a.id} onClick={() => { setEmail(a.email); setPassword(a.password); }}>{a.role === "delivery" ? "Rider" : a.role[0]!.toUpperCase() + a.role.slice(1)} · {a.full_name.split(" ")[0]}</button>)}</div>
               </div>
             )}
-            <div className="auth-switch">
+            {authMode !== "forgot" && <div className="auth-switch">
               {authMode === "login" ? "New customer? " : "Already registered? "}
               <button
                 onClick={() => {
@@ -458,7 +485,7 @@ export default function App() {
               >
                 {authMode === "login" ? "Create account" : "Sign in"}
               </button>
-            </div>
+            </div>}
             <p className="fine-print">
               <ShieldCheck size={14} /> Your information is kept private and secure.
             </p>
@@ -482,7 +509,7 @@ export default function App() {
   );
 
   const setCurrentPage = (requestedPage: string) => {
-    const fallbackPage = profile.role === "customer" ? "My Orders" : "Overview";
+    const fallbackPage = profile.role === "customer" ? "Order Water" : "Overview";
     const safePage = canAccessPage(profile.role, requestedPage, data?.permissions) ? requestedPage : fallbackPage;
     setPage(safePage);
     writeStored(`aquawell-page-${profile.id}`, safePage);
