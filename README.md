@@ -112,14 +112,6 @@ Review and apply `supabase/migrations/202610150001_delivery_confirmation_and_com
 
 Run `npm ci` (or `npm install`) on your development machine, then `npm run build`. The uploaded ZIP's `node_modules` directory was created on a different platform and lacks required platform-specific optional packages, so it should not be reused. TypeScript validation completed with `tsc --noEmit` in the review environment.
 
-## Progressive Web App (PWA)
-
-AquaWell now includes a web app manifest, install icons, and a service worker that caches the application shell and same-origin build assets. It does not cache Supabase responses, account data, customer addresses, or map tiles.
-
-- Android: open the deployed HTTPS site in Chrome, then choose **Install app** or **Add to Home screen**.
-- iPhone/iPad: open the deployed HTTPS site in Safari, tap **Share**, then **Add to Home Screen**.
-- The PWA shell can reopen offline after the app has been loaded once, but authentication, orders, live tracking updates, and map tiles still require connectivity.
-
 ### Rider GPS limitation
 
 The rider's location is saved to `rider_locations` and the last saved coordinates remain visible when the rider goes offline. The rider app also requests the Screen Wake Lock API during active deliveries when supported. However, mobile browsers do not allow a service worker to access GPS, and a PWA cannot guarantee continuous background location tracking after the rider switches apps, locks the phone, or the operating system suspends the browser. For guaranteed background GPS, a native Android/iOS wrapper with the platform's background-location permission is required. Keep AquaWell open in the foreground during delivery for the most reliable updates.
